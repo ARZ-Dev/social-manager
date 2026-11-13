@@ -1,0 +1,4 @@
+User-agent: *
+Disallow:
+
+Sitemap: https://https://amelaug.com/sitemap.xml

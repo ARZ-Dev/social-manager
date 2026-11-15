@@ -90,7 +90,7 @@
                 <div class="about-one__content">
                     <div class="block-title text-left">
                         <div class="block-title__image"></div><!-- /.block-title__image -->
-                        <p>Welcome to amelaug</p>
+                        <p>Welcome to SocialM</p>
                         <h3>Committed to fair labor and sustainable practices</h3>
                     </div><!-- /.block-title -->
                     <div class="about-one__tagline">

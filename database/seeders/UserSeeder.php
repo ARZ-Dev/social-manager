@@ -14,7 +14,7 @@ class UserSeeder extends Seeder
     public function run(): void
     {
         $users=[
-            ['Super Admin','Admin','Super','Admin','admin@AMELAUG.com'],//Super Admin
+            ['Super Admin','Admin','Super','Admin','admin@SocialM.com'],//Super Admin
 
         ];
 

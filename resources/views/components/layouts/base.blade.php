@@ -21,7 +21,7 @@
         $title = ucwords(str_replace('-', ' ', $title));
     @endphp
 
-    <title>AMELAUG  - {{ $title }}</title>
+    <title>SocialM  - {{ $title }}</title>
 
     <!-- Favicon -->
     <link rel="icon" type="image/png" sizes="16x16" href="{{ asset('farm_assets/images/farm_images/mini-logo1.png') }}">

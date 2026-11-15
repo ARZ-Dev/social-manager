@@ -69,7 +69,7 @@
                                             Not sure why you received this email? Please
                                             <a href="mailto:info@modernplasticcompany.com" class="hover-underline" style="font-family: 'Montserrat', sans-serif; mso-line-height-rule: exactly; color: var(--main-color); text-decoration: none;">let us know</a>.
                                         </p>
-                                        <p style="font-family: 'Montserrat', sans-serif; mso-line-height-rule: exactly; margin: 0; margin-bottom: 16px;">Thanks, <br>The AMELAUG Team</p>
+                                        <p style="font-family: 'Montserrat', sans-serif; mso-line-height-rule: exactly; margin: 0; margin-bottom: 16px;">Thanks, <br>The SocialM Team</p>
                                     </td>
                                 </tr>
                                 <tr>

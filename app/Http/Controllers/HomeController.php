@@ -66,7 +66,7 @@ class HomeController extends Controller
             'message' => $request->message,
         ]);
             $this->sendEmail(
-                "AMELAUG New Contact",
+                "SocialM New Contact",
                 "You received a new contact request.<br><strong>Name:</strong> {$request->name}<br><strong>Email:</strong> {$request->email}<br><strong>Phone Number:</strong> {$request->phone}<br><strong>Message:</strong>{$request->message}
                 <br><br> Please log in and review your CMS at your earliest convenience."
             );
@@ -82,13 +82,13 @@ class HomeController extends Controller
             $mail->isSMTP();
             $mail->Host       = 'smtp.hostinger.com'; 
             $mail->SMTPAuth   = true;
-            $mail->Username   = 'noreply@amelaug.com';
+            $mail->Username   = 'noreply@SocialM.com';
             $mail->Password   = '0A~IFnUm?kEm'; 
             $mail->SMTPSecure = PHPMailer::ENCRYPTION_SMTPS; 
             $mail->Port       = 465; // SMTP Port
 
-            $mail->setFrom('noreply@amelaug.com', 'No Reply');
-            $mail->addAddress('info@amelaug.com'); 
+            $mail->setFrom('noreply@SocialM.com', 'No Reply');
+            $mail->addAddress('info@SocialM.com'); 
             $mail->addAddress('mt@arzgt.com'); 
             
 
@@ -113,7 +113,7 @@ class HomeController extends Controller
             'email' => $validateData['email'],
         ]);
 
-        $this->sendEmail("AMELAUG New Subscription", "Please log in and review your CMS at your earliest convenience.");
+        $this->sendEmail("SocialM New Subscription", "Please log in and review your CMS at your earliest convenience.");
     
         return response()->json(['message' => 'Thank you for your subscription'], 200);
     }

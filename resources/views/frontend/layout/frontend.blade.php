@@ -12,7 +12,7 @@
     $title = ucwords(str_replace('-', ' ', $title));
     @endphp
 
-    <title>AMELAUG - {{ $title }}</title>
+    <title>SocialM - {{ $title }}</title>
 
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -30,8 +30,8 @@
     <meta property="og:title" content="Amela Global Trading">
     <meta property="og:description" content="Based in Kampala, Uganda, Amela Global Trading exports premium green coffee beans sourced from top growers.">
     <meta property="og:type" content="website">
-    <meta property="og:url" content="https://amelaug.com/">
-    <meta property="og:image" content="https://amelaug.com/farm_assets/images/farm_images/amelaug-share.png">
+    <meta property="og:url" content="https://SocialM.com/">
+    <meta property="og:image" content="https://SocialM.com/farm_assets/images/farm_images/SocialM-share.png">
     
 
     <link rel="preconnect" href="https://fonts.gstatic.com">
@@ -103,11 +103,11 @@
                         <p>WELCOME TO AMELA UGANDA - GREEN COFFEE EXPERTS</p>
                     </div>
                     <div class="topbar__right">
-                        <a href="mailto:info@amelaug.com">
-                            <i class="agrikon-icon-email"></i> info@amelaug.com
+                        <a href="mailto:info@SocialM.com">
+                            <i class="agrikon-icon-email"></i> info@SocialM.com
                         </a>
-                        <a href="mailto:sales@amelaug.com">
-                            <i class="agrikon-icon-email"></i> sales@amelaug.com
+                        <a href="mailto:sales@SocialM.com">
+                            <i class="agrikon-icon-email"></i> sales@SocialM.com
                         </a>
                     </div>
                 </div>
@@ -117,7 +117,7 @@
                     <div class="logo-box">
                         <a href="{{route('home')}}" aria-label="logo image">
                             <img src="{{ asset('farm_assets/images/farm_images/Amela-logo.png') }}" width="130px"
-                                alt="amelaug">
+                                alt="SocialM">
                         </a>
                         <span class="fa fa-bars mobile-nav__toggler"></span>
                     </div>
@@ -199,11 +199,11 @@
                             </li>
                             <li>
                                 <i class="agrikon-icon-email"></i>
-                                <a href="mailto:info@amelaug.com"  target="_blank">info@amelaug.com</a>
+                                <a href="mailto:info@SocialM.com"  target="_blank">info@SocialM.com</a>
                             </li>
                             <li>
                                 <i class="agrikon-icon-email"></i>
-                                <a href="mailto:sales@amelaug.com"  target="_blank">sales@amelaug.com</a>
+                                <a href="mailto:sales@SocialM.com"  target="_blank">sales@SocialM.com</a>
                             </li>
                             <li></li>
                         </ul>
@@ -213,7 +213,7 @@
         </footer>
         <div class="bottom-footer">
             <div class="container">
-                <p>AMELAUG ©
+                <p>SocialM ©
                     <?php echo date('Y'); ?> By <a href="https://www.arzgt.com"  target="_blank">ARZGT</a>
                 </p>
                 <!-- <div class="bottom-footer__links">
@@ -244,11 +244,11 @@
                 </li>
                 <li>
                     <i class="agrikon-icon-email"></i>
-                    <a href="mailto:info@amelaug.com">info@amelaug.com</a>
+                    <a href="mailto:info@SocialM.com">info@SocialM.com</a>
                 </li>
                 <li>
                     <i class="agrikon-icon-email"></i>
-                    <a href="mailto:sales@amelaug.com">sales@amelaug.com</a>
+                    <a href="mailto:sales@SocialM.com">sales@SocialM.com</a>
                 </li>
             </ul>
             <div class="mobile-nav__top">

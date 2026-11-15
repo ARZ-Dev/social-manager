@@ -36,7 +36,7 @@
                             <div class="container-xxl">
                                 <div class="footer-container d-flex align-items-center justify-content-between py-2 flex-md-row flex-column">
                                     <div>
-                                        AMELAUG © <?php echo date('Y'); ?>. All Rights Reserved.
+                                        SocialM © <?php echo date('Y'); ?>. All Rights Reserved.
                                     </div>
                                     <div>
                                         Designed & Developed by <a href="https://www.aarzgt.com" target="_blank" class="fw-semibold">ARZGT</a>

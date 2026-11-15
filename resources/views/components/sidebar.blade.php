@@ -18,7 +18,7 @@
 
 		<div class="menu-inner-shadow"></div>
 
-		<ul class="menu-inner py-1">
+		<ul class="menu-inner mt-4 py-1">
 
 			<li class="menu-item {{ request()->is('dashboard') ? "active" : "" }}">
 				<a href="{{ route('dashboard') }}" class="menu-link">
@@ -27,6 +27,15 @@
 				</a>
 			</li>
 			
+			
+			@can('company-list')
+			<li class="menu-item {{ request()->is('companies*') ? "active" : "" }}">
+				<a href="{{ route('companies') }}" class="menu-link">
+					<i class="menu-icon tf-icons ti ti-building"></i>
+					<div data-i18n="Companies">Companies</div>
+				</a>
+			</li>
+			@endcan
 
 			@canany(['role-list', 'permission-list', 'user-list'])
 			<li class="menu-item {{ request()->is('roles') || request()->is('permissions') || request()->is('users*') || request()->is('region*') ? "active open" : "" }}">
@@ -58,23 +67,6 @@
 			</li>
 			@endcanany
 
-			@can('subscriber-list')
-					<li class="menu-item {{ request()->is('subscribers*') ? "active" : "" }}">
-						<a href="{{ route('subscribers') }}" class="menu-link">
-							<i class="menu-icon ti ti-user-plus"></i>
-							<div data-i18n="Subscribers">Subscribers</div>
-						</a>
-					</li>
-			@endcan
-
-			@can('contact-list')
-					<li class="menu-item {{ request()->is('contacts*') ? "active" : "" }}">
-						<a href="{{ route('contacts') }}" class="menu-link">
-							<i class="menu-icon ti ti-mail-opened"></i>
-							<div data-i18n="Messages">Messages</div>
-						</a>
-					</li>
-			@endcan
 
 		</ul>
 

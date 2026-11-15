@@ -451,7 +451,7 @@
 
 .video-card-two__box-btn:hover {
   color: #fff;
-  background-color: var(--thm-primary);
+  background-color: var(--thm-secondary);
 }
 
 @media (max-width: 575px) {

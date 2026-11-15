@@ -91,6 +91,15 @@
             /* --bs-link-hover-color: #Ce6A85; */
         }
 
+        .bg-menu-theme.menu-vertical .menu-item.active > .menu-link:not(.menu-toggle) {
+            background: linear-gradient(72.47deg, #009DFF 0%, #061F60 100%) !important;
+            color: #fff !important;
+            box-shadow: 0 2px 6px rgba(6, 31, 96, 0.4) !important;
+        }
+        [dir=rtl] .bg-menu-theme.menu-vertical .menu-item.active > .menu-link:not(.menu-toggle) {
+            background: linear-gradient(72.47deg, #061F60 0%, #009DFF 100%) !important;
+        }
+
         .btn-primary:hover, .btn-primary:focus, .btn-primary:active,
         .btn-outline-primary:hover, .btn-label-primary:hover {
             background-color: #061F60 !important;

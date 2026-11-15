@@ -11,6 +11,7 @@
                  <tr>
                     <th>Id</th>
                     <th>Role</th>
+                    <th>Company</th>
                     <th>Username</th>
                     <th>E-mail</th>
                     <th>Phone</th>
@@ -22,6 +23,7 @@
                     <tr>
                         <td>{{ $user->id }}</td>
                         <td>{{ $user->roles[0]->name ?? 'N/A' }}</td>
+                        <td>{{ $user->company->name ?? '-' }}</td>
                         <td>{{ $user->username }}</td>
                         <td>{{ $user->email }}</td>
                         <td>{{ $user->phone }}</td>

@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Users;
 
+use App\Models\Company;
 use App\Models\User;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Support\Facades\Hash;
@@ -23,6 +24,8 @@ class UserForm extends Component
     public string $username = "";
     public string $email = "";
     public $role_name;
+    public $company_id = '';
+    public $companies;
 
     public string $phone = "";
     public string $password = "";
@@ -38,6 +41,7 @@ class UserForm extends Component
     {
         $this->authorize('user-list');
         $this->roles = Role::all();
+        $this->companies = Company::where('is_active', true)->orderBy('name')->get();
 
         $this->status=$status;
 
@@ -54,6 +58,12 @@ class UserForm extends Component
             $this->email = $this->user->email;
 
             $this->phone = $this->user->phone;
+            $this->company_id = $this->user->company_id ?? '';
+
+            // Keep an inactive company selectable if the user already belongs to it.
+            if ($this->user->company && !$this->companies->contains('id', $this->user->company_id)) {
+                $this->companies->push($this->user->company);
+            }
 
             $this->role_name = $this->user->roles[0]->name ?? "";
 
@@ -71,9 +81,22 @@ class UserForm extends Component
             'username' => ['required', Rule::unique('users', 'username')],
             'email' => ['nullable', 'email'],
             'role_name' => ['required', Rule::exists('roles', 'name')],
+            'company_id' => $this->companyRule(),
 
             'phone' => ['required'],
             'password' => ['required', 'confirmed']
+        ];
+    }
+
+    /**
+     * Every user belongs to one company, except Super Admins who see all companies.
+     */
+    protected function companyRule(): array
+    {
+        return [
+            Rule::requiredIf(fn () => $this->role_name !== 'Super Admin'),
+            'nullable',
+            Rule::exists('companies', 'id')->whereNull('deleted_at'),
         ];
     }
 
@@ -89,6 +112,7 @@ class UserForm extends Component
             'username' => $this->username,
             'email' => $this->email,
             'phone' => $this->phone,
+            'company_id' => $this->company_id ?: null,
             'password' => Hash::make($this->password),
 
         ]);
@@ -111,6 +135,7 @@ class UserForm extends Component
             'username' => ['required', Rule::unique('users', 'username')->ignore($this->user->id)],
             'email' => ['nullable', 'email'],
             'role_name' => ['required', Rule::exists('roles', 'name')],
+            'company_id' => $this->companyRule(),
 
             'phone' => ['required'],
             'password' => ['nullable', 'confirmed']
@@ -122,6 +147,7 @@ class UserForm extends Component
         $this->user->email = $this->email;
 
         $this->user->phone = $this->phone;
+        $this->user->company_id = $this->company_id ?: null;
         if ($this->password) {
             $this->user->password = Hash::make($this->password);
         }

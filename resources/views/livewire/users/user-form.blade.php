@@ -75,6 +75,20 @@
                         </div>
                         @endif
                         <div class="col-12 col-md-6">
+                            <label class="form-label" for="UserCompany">Company</label>
+                            <select
+                                wire:model.defer="company_id"
+                                id="UserCompany"
+                                name="UserCompany"
+                                class="form-select">
+                                <option value="">No company (Super Admin only)</option>
+                                @foreach($companies as $company)
+                                <option value="{{ $company->id }}">{{ $company->name }}</option>
+                                @endforeach
+                            </select>
+                            @error('company_id') <div class="text-danger">{{ $message }}</div> @enderror
+                        </div>
+                        <div class="col-12 col-md-6">
                             <label class="form-label" for="UserPhone">Phone</label>
                             <div class="input-group">
                                 <input

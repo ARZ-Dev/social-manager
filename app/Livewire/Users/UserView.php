@@ -30,7 +30,7 @@ class UserView extends Component
     {
         $data = [];
 
-        $users = User::all();
+        $users = User::with(['roles', 'company'])->get();
         $data['users'] = $users;
 
         return view('livewire.users.user-view', $data);

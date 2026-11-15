@@ -33,6 +33,18 @@ class PermissionSeeder extends Seeder
             // Permissions Page
             'permission-list',
 
+            // Companies Page
+            'company-list',
+            'company-create',
+            'company-edit',
+            'company-delete',
+
+            // Branches Page
+            'branch-list',
+            'branch-create',
+            'branch-edit',
+            'branch-delete',
+
             // Contact Page
             'contact-list',
             'contact-delete',

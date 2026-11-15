@@ -84,10 +84,18 @@
 
     <style>
               :root {
-            --main-color: #F15D3A;
-            --bs-primary: #FF8C61;
-            --bs-link-hover-color: #345945;
+            --main-color: #009DFF;
+            --bs-primary: #009DFF;
+            --bs-secondary: #061F60;
+            --bs-link-hover-color: #061F60;
             /* --bs-link-hover-color: #Ce6A85; */
+        }
+
+        .btn-primary:hover, .btn-primary:focus, .btn-primary:active,
+        .btn-outline-primary:hover, .btn-label-primary:hover {
+            background-color: #061F60 !important;
+            border-color: #061F60 !important;
+            color: #fff !important;
         }
 
         .invalid-validation-select {

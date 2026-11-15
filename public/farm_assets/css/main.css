@@ -932,7 +932,7 @@
 }
 
 .blog-card__content .thm-btn:hover {
-  background-color: var(--thm-black);
+  background-color: var(--thm-secondary);
   color: #fff;
 }
 
@@ -1028,7 +1028,7 @@
 }
 
 .blog-grid .more-btn__box .thm-btn:hover {
-  background-color: var(--thm-base);
+  background-color: var(--thm-secondary);
   color: #fff;
 }
 
@@ -1787,7 +1787,7 @@
 }
 
 .blog-comment__box .thm-btn:hover {
-  background-color: var(--thm-black);
+  background-color: var(--thm-secondary);
   color: #fff;
 }
 
@@ -1800,12 +1800,12 @@
   --special-font: "Handlee", cursive;
   --thm-color: #6e7673;
   --thm-color-rgb: 110, 118, 115;
-  --thm-base: #F15D3A;
-  --thm-base-rgb: 73, 167, 96;
-  --thm-primary: #F15D3A;
-  --thm-primary-rgb: 241, 93, 58;
-  --thm-secondary: #ed4b4b;
-  --thm-secondary-rgb: 237, 75, 75;
+  --thm-base: #009DFF;
+  --thm-base-rgb: 0, 157, 255;
+  --thm-primary: #009DFF;
+  --thm-primary-rgb: 0, 157, 255;
+  --thm-secondary: #061F60;
+  --thm-secondary-rgb: 6, 31, 96;
   --thm-special: #5366c2;
   --thm-special-rgb: 83, 102, 194;
   --thm-black: #255946;
@@ -1928,7 +1928,7 @@ h6 {
 
 .thm-btn:hover {
   color: #FFF;
-  background-color: #255946;
+  background-color: var(--thm-secondary);
 }
 
 .gray-boxed-wrapper {
@@ -2268,7 +2268,7 @@ h6 {
 }
 
 .form-one .thm-btn:hover {
-  background-color: var(--thm-primary);
+  background-color: var(--thm-secondary);
   color: #fff;
 }
 
@@ -3498,7 +3498,7 @@ h6 {
 }
 
 .search-popup__content .thm-btn:hover {
-  background-color: var(--thm-black);
+  background-color: var(--thm-secondary);
   color: #fff;
 }
 

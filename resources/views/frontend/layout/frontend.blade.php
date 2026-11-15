@@ -116,7 +116,7 @@
                 <div class="container">
                     <div class="logo-box">
                         <a href="{{route('home')}}" aria-label="logo image">
-                            <img src="{{ asset('farm_assets/images/farm_images/Amela-logo.png') }}" width="130px"
+                            <img src="{{ asset('farm_assets/images/farm_images/logo.png') }}" width="130px"
                                 alt="SocialM">
                         </a>
                         <span class="fa fa-bars mobile-nav__toggler"></span>

@@ -4,7 +4,7 @@
 		<div class="app-brand demo">
 			<a href="{{url('dashboard')}}" class="app-brand-link">
 				<span class="app-brand-logo demo mt-4">
-				<img id="logoImage" src="{{ asset('farm_assets/images/farm_images/Amela-logo.png') }}" alt="Logo" class="logo-image w-100">
+				<img id="logoImage" src="{{ asset('farm_assets/images/farm_images/logo.png') }}" alt="Logo" class="logo-image w-100">
 			</span>
 				{{-- <span class="app-brand-text demo menu-text fw-bold"></span> --}}
 			</a>

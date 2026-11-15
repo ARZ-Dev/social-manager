@@ -13,7 +13,7 @@
                     <div class="card-body">
 
                         <!-- Logo -->
-                        <img src="{{ asset('farm_assets/images/farm_images/Amela-logo.png') }}" style="max-width: 100%;" >
+                        <img src="{{ asset('farm_assets/images/farm_images/logo.png') }}" style="max-width: 100%;" >
 
 
                         <div id="formAuthentication" class="mb-3">

@@ -48,4 +48,24 @@ class User extends Authenticatable
     {
         return $this->belongsTo(Company::class);
     }
+
+    /**
+     * Super Admins see every company; everyone else is limited to their own.
+     */
+    public function canAccessAllCompanies(): bool
+    {
+        return $this->hasRole('Super Admin');
+    }
+
+    /**
+     * Limit users to those in the viewer's company (no limit for Super Admins).
+     */
+    public function scopeVisibleTo($query, User $viewer)
+    {
+        if ($viewer->canAccessAllCompanies()) {
+            return $query;
+        }
+
+        return $query->where('company_id', $viewer->company_id ?? 0);
+    }
 }

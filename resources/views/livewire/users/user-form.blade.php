@@ -57,6 +57,22 @@
                             @error('email') <div class="text-danger">{{ $message }}</div> @enderror
                         </div>
 
+                        <div class="col-12 col-md-6">
+                            <label class="form-label" for="UserCompany">Company</label>
+                            <select
+                                wire:model.live="company_id"
+                                id="UserCompany"
+                                name="UserCompany"
+                                class="form-select">
+                                @if(auth()->user()->canAccessAllCompanies())
+                                <option value="">No company (Super Admin only)</option>
+                                @endif
+                                @foreach($companies as $company)
+                                <option value="{{ $company->id }}">{{ $company->name }}</option>
+                                @endforeach
+                            </select>
+                            @error('company_id') <div class="text-danger">{{ $message }}</div> @enderror
+                        </div>
                         @if($editing && $user->id != 1 || !$editing)
                         <div class="col-12 col-md-6">
                             <label class="form-label" for="UserRole">Role</label>
@@ -65,29 +81,16 @@
                                 id="UserRole"
                                 name="UserRole"
                                 class="form-select"
-                                aria-label="Default select example">
-                                <option value="" selected>Select Role</option>
-                                @foreach($roles as $role)
+                                aria-label="Default select example"
+                                wire:key="roles-for-company-{{ $company_id ?: 'none' }}">
+                                <option value="" selected>{{ $company_id || auth()->user()->canAccessAllCompanies() ? 'Select Role' : 'Select a company first' }}</option>
+                                @foreach($this->availableRoles as $role)
                                 <option value="{{ $role->name }}">{{ $role->name }}</option>
                                 @endforeach
                             </select>
                             @error('role_name') <div class="text-danger">{{ $message }}</div> @enderror
                         </div>
                         @endif
-                        <div class="col-12 col-md-6">
-                            <label class="form-label" for="UserCompany">Company</label>
-                            <select
-                                wire:model.defer="company_id"
-                                id="UserCompany"
-                                name="UserCompany"
-                                class="form-select">
-                                <option value="">No company (Super Admin only)</option>
-                                @foreach($companies as $company)
-                                <option value="{{ $company->id }}">{{ $company->name }}</option>
-                                @endforeach
-                            </select>
-                            @error('company_id') <div class="text-danger">{{ $message }}</div> @enderror
-                        </div>
                         <div class="col-12 col-md-6">
                             <label class="form-label" for="UserPhone">Phone</label>
                             <div class="input-group">

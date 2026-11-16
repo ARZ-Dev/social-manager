@@ -21,7 +21,7 @@ class CompanyView extends Component
     {
         $this->authorize('company-delete');
 
-        Company::findOrFail($id)->delete();
+        Company::visibleTo(auth()->user())->findOrFail($id)->delete();
 
         return to_route('companies')->with('success', 'Company has been deleted successfully!');
     }
@@ -29,7 +29,7 @@ class CompanyView extends Component
     public function render()
     {
         return view('livewire.companies.company-view', [
-            'companies' => Company::withCount(['branches', 'users'])->latest()->get(),
+            'companies' => Company::visibleTo(auth()->user())->withCount(['branches', 'users'])->latest()->get(),
         ]);
     }
 }

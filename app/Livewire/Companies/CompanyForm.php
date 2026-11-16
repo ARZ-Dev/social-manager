@@ -24,9 +24,12 @@ class CompanyForm extends Component
     {
         $this->authorize($id ? 'company-edit' : 'company-create');
 
+        // Only Super Admins can create new companies.
+        abort_if(!$id && !auth()->user()->canAccessAllCompanies(), 403);
+
         if ($id) {
             $this->editing = true;
-            $this->company = Company::findOrFail($id);
+            $this->company = Company::visibleTo(auth()->user())->findOrFail($id);
             $this->name = $this->company->name;
             $this->email = $this->company->email ?? '';
             $this->phone = $this->company->phone ?? '';
@@ -49,6 +52,7 @@ class CompanyForm extends Component
     public function save()
     {
         $this->authorize($this->editing ? 'company-edit' : 'company-create');
+        abort_if(!$this->editing && !auth()->user()->canAccessAllCompanies(), 403);
         $data = $this->validate();
 
         if ($this->editing) {

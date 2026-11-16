@@ -20,7 +20,7 @@ class UserView extends Component
             return to_route('users')->with('error', 'You cannot delete the user with ID 1.');
         }
 
-        $user = User::findOrFail($id);
+        $user = User::visibleTo(auth()->user())->findOrFail($id);
         $user->delete();
 
         return to_route('users')->with('success', 'User has been deleted successfully!');
@@ -30,7 +30,7 @@ class UserView extends Component
     {
         $data = [];
 
-        $users = User::with(['roles', 'company'])->get();
+        $users = User::visibleTo(auth()->user())->with(['roles', 'company'])->get();
         $data['users'] = $users;
 
         return view('livewire.users.user-view', $data);

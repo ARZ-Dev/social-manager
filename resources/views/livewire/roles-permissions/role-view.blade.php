@@ -33,6 +33,7 @@
                         <tr>
                             <th>Id</th>
                             <th>Name</th>
+                            <th>Company</th>
                             <th>Actions</th>
                         </tr>
                         </thead>
@@ -50,6 +51,7 @@
                                     {{ $role->name }}
                                 </span>
                             </td>
+                            <td>{{ $role->company?->name ?? 'All companies' }}</td>
                             <td>
                                 <div class="d-flex align-items-center">
                                     @can('role-edit')
@@ -103,6 +105,18 @@
                             />
                             @error('name') <div class="text-danger">{{ $message }}</div> @enderror
                         </div>
+                        @if(auth()->user()->canAccessAllCompanies())
+                        <div class="col-12 mb-4">
+                            <label class="form-label" for="modalRoleCompany">Company</label>
+                            <select wire:model.defer="company_id" id="modalRoleCompany" class="form-select">
+                                <option value="">All companies (global role)</option>
+                                @foreach($companies as $company)
+                                    <option value="{{ $company->id }}">{{ $company->name }}</option>
+                                @endforeach
+                            </select>
+                            @error('company_id') <div class="text-danger">{{ $message }}</div> @enderror
+                        </div>
+                        @endif
                         <div class="col-12">
                             <h5>Role Permission</h5>
                             <!-- Permission table -->

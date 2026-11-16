@@ -2,12 +2,13 @@
 
 namespace App\Livewire\RolesPermissions;
 
+use App\Models\Company;
 use App\Utils\Constants;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Validation\Rule;
 use Livewire\Component;
 use Spatie\Permission\Models\Permission;
-use Spatie\Permission\Models\Role;
+use App\Models\Role;
 
 class RoleView extends Component
 {
@@ -24,6 +25,8 @@ class RoleView extends Component
     public bool $allowPermissionEditing = true;
 
     public $name = "";
+    public $company_id = '';
+    public $companies = [];
 
     public array $primaryRolesIds;
 
@@ -34,6 +37,10 @@ class RoleView extends Component
     public function mount()
     {
         $this->authorize('role-list');
+        // Only Super Admins pick a company; everyone else gets their own.
+        if (auth()->user()->canAccessAllCompanies()) {
+            $this->companies = Company::orderBy('name')->get();
+        }
         $this->permissions = Permission::all();
         foreach ($this->permissions as $permission) {
             $prefix = explode('-', $permission->name)[0];
@@ -51,7 +58,7 @@ class RoleView extends Component
 
     public function clearData()
     {
-        $this->reset('editing', 'name', 'selectedPermissions', 'role');
+        $this->reset('editing', 'name', 'company_id', 'selectedPermissions', 'role');
         $this->resetValidation();
     }
 
@@ -81,8 +88,9 @@ class RoleView extends Component
         $this->clearData();
         $this->editing = true;
         $this->allowPermissionEditing = $id != Constants::SUPER_ADMIN_ROLE_ID;
-        $this->role = Role::findById($id);
+        $this->role = Role::visibleTo(auth()->user())->findOrFail($id);
         $this->name = $this->role->name;
+        $this->company_id = $this->role->company_id ?? '';
         $this->selectedPermissions = $this->role->permissions()->pluck('name')->toArray();
         $this->isAllPermissionsSelected = count($this->selectedPermissions) == count($this->permissions);
     }
@@ -91,6 +99,7 @@ class RoleView extends Component
     {
         return [
             'name' => ['required', 'max:255', Rule::unique('roles', 'name')->ignore($this->role?->id)],
+            'company_id' => ['nullable', Rule::exists('companies', 'id')->whereNull('deleted_at')],
         ];
     }
 
@@ -99,16 +108,25 @@ class RoleView extends Component
 
         $this->validate();
 
+        $viewer = auth()->user();
+        // Super Admins choose the company (empty = global role); others always use their own.
+        $companyId = $viewer->canAccessAllCompanies()
+            ? ($this->company_id ?: null)
+            : $viewer->company_id;
+
         if ($this->role) {
             $this->authorize('role-edit');
+            $this->role = Role::visibleTo($viewer)->findOrFail($this->role->id);
             $this->role->update([
                 'name' => $this->name,
+                'company_id' => $companyId,
             ]);
 
         } else {
             $this->authorize('role-create');
             $this->role = Role::create([
                 'name' => $this->name,
+                'company_id' => $companyId,
             ]);
         }
         $this->role->syncPermissions($this->selectedPermissions);
@@ -125,7 +143,7 @@ class RoleView extends Component
     {
         $this->authorize('role-delete');
         // check if role has users before deleting
-        $role = Role::findById($id);
+        $role = Role::visibleTo(auth()->user())->findOrFail($id);
         if (count($role->users)) {
             $this->dispatch('swal:error', [
                 'title' => 'Error!',
@@ -145,7 +163,7 @@ class RoleView extends Component
     public function render()
     {
         $data = [];
-        $data['roles'] = Role::withCount('users')->get();
+        $data['roles'] = Role::visibleTo(auth()->user())->with('company')->withCount('users')->get();
 
 
         

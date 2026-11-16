@@ -22,6 +22,18 @@ class Company extends Model
         return $this->hasMany(Branch::class);
     }
 
+    /**
+     * Limit companies to the viewer's own company (no limit for Super Admins).
+     */
+    public function scopeVisibleTo($query, User $viewer)
+    {
+        if ($viewer->canAccessAllCompanies()) {
+            return $query;
+        }
+
+        return $query->whereKey($viewer->company_id ?? 0);
+    }
+
     public function users(): HasMany
     {
         return $this->hasMany(User::class);

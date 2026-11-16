@@ -28,7 +28,7 @@ class BranchView extends Component
     public function mount($company)
     {
         $this->authorize('branch-list');
-        $this->company = Company::findOrFail($company);
+        $this->company = Company::visibleTo(auth()->user())->findOrFail($company);
     }
 
     protected function rules(): array

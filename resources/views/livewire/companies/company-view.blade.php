@@ -35,9 +35,6 @@
                                 </span>
                             </td>
                             <td>
-                                @can('branch-list')
-                                    <a href="{{ route('companies.branches', $company->id) }}" class="text-body" title="Branches"><i class="ti ti-building-store ti-sm me-2"></i></a>
-                                @endcan
                                 @can('company-edit')
                                     <a href="{{ route('companies.edit', $company->id) }}" class="text-body" title="Edit"><i class="ti ti-edit ti-sm me-2"></i></a>
                                 @endcan

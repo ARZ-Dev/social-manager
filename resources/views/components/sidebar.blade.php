@@ -27,15 +27,6 @@
 				</a>
 			</li>
 			
-			
-			@can('company-list')
-			<li class="menu-item {{ request()->is('companies*') ? "active" : "" }}">
-				<a href="{{ route('companies') }}" class="menu-link">
-					<i class="menu-icon tf-icons ti ti-building"></i>
-					<div data-i18n="Companies">Companies</div>
-				</a>
-			</li>
-			@endcan
 
 			@canany(['role-list', 'permission-list', 'user-list'])
 			<li class="menu-item {{ request()->is('roles') || request()->is('permissions') || request()->is('users*') || request()->is('region*') ? "active open" : "" }}">
@@ -66,6 +57,16 @@
 				</ul>
 			</li>
 			@endcanany
+
+
+			@can('company-list')
+			<li class="menu-item {{ request()->is('companies*') ? "active" : "" }}">
+				<a href="{{ route('companies') }}" class="menu-link">
+					<i class="menu-icon tf-icons ti ti-building"></i>
+					<div data-i18n="Companies">Companies</div>
+				</a>
+			</li>
+			@endcan
 
 
 		</ul>

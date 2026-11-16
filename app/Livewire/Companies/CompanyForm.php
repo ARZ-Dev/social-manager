@@ -21,6 +21,12 @@ class CompanyForm extends Component
 
     public bool $editing = false;
 
+    /** Meta (Facebook) app used to connect this company's Pages and Instagram. */
+    public string $meta_app_id = '';
+    /** Write-only: never loaded back into the page. Blank = keep the saved secret. */
+    public string $meta_app_secret = '';
+    public bool $hasMetaSecret = false;
+
     /** Branch rows edited inline: [id, name, external_id, phone, address, is_active]. */
     public array $branches = [];
 
@@ -39,6 +45,8 @@ class CompanyForm extends Component
             $this->phone = $this->company->phone ?? '';
             $this->address = $this->company->address ?? '';
             $this->is_active = $this->company->is_active;
+            $this->meta_app_id = $this->company->meta_app_id ?? '';
+            $this->hasMetaSecret = filled($this->company->meta_app_secret);
 
             $this->branches = $this->company->branches()->orderBy('name')->get()
                 ->map(fn ($b) => [
@@ -76,6 +84,12 @@ class CompanyForm extends Component
             'phone' => ['nullable', 'string', 'max:50'],
             'address' => ['nullable', 'string', 'max:255'],
             'is_active' => ['boolean'],
+            'meta_app_id' => ['nullable', 'regex:/^\d{5,20}$/'],
+            'meta_app_secret' => [
+                'nullable', 'regex:/^[a-f0-9]{32}$/i',
+                // A new App ID needs a secret, unless one is already saved.
+                \Illuminate\Validation\Rule::requiredIf(fn () => filled($this->meta_app_id) && !$this->hasMetaSecret),
+            ],
             'branches' => ['array'],
             'branches.*.name' => ['required', 'string', 'max:255'],
             'branches.*.external_id' => ['nullable', 'string', 'max:255', 'distinct'],
@@ -88,6 +102,8 @@ class CompanyForm extends Component
     protected function validationAttributes(): array
     {
         return [
+            'meta_app_id' => 'Meta App ID',
+            'meta_app_secret' => 'Meta App Secret',
             'branches.*.name' => 'branch name',
             'branches.*.external_id' => 'branch external ID',
             'branches.*.phone' => 'branch phone',
@@ -102,6 +118,14 @@ class CompanyForm extends Component
         $data = $this->validate();
         $branches = $data['branches'] ?? [];
         unset($data['branches']);
+
+        // Blank secret keeps the saved one; removing the App ID removes both.
+        $data['meta_app_id'] = $data['meta_app_id'] ?: null;
+        if (!$data['meta_app_id']) {
+            $data['meta_app_secret'] = null;
+        } elseif (blank($data['meta_app_secret'])) {
+            unset($data['meta_app_secret']);
+        }
 
         DB::transaction(function () use ($data, $branches) {
             if ($this->editing) {

@@ -15,23 +15,24 @@ use Illuminate\Support\Str;
  */
 class SocialConnectController extends Controller
 {
-    public function redirect(Request $request, MetaClient $meta)
+    public function redirect(Request $request)
     {
         abort_unless($request->user()->can('social-connect'), 403);
 
-        if (!MetaClient::isConfigured()) {
-            return to_route('social')->with('error', 'Meta app is not configured. Set META_APP_ID and META_APP_SECRET in .env.');
-        }
-
         $company = Company::visibleTo($request->user())->findOrFail($request->query('company'));
+
+        if (!$company->hasMetaApp()) {
+            return to_route('social', ['company' => $company->id])
+                ->with('error', "Add {$company->name}'s Meta App ID and App Secret in the company settings first.");
+        }
 
         $state = Str::random(40);
         session(['meta_oauth' => ['state' => $state, 'company_id' => $company->id]]);
 
-        return redirect()->away($meta->loginUrl(route('social.callback'), $state));
+        return redirect()->away(MetaClient::forCompany($company)->loginUrl(route('social.callback'), $state));
     }
 
-    public function callback(Request $request, MetaClient $meta)
+    public function callback(Request $request)
     {
         abort_unless($request->user()->can('social-connect'), 403);
 
@@ -46,6 +47,9 @@ class SocialConnectController extends Controller
         }
 
         try {
+            $company = Company::visibleTo($request->user())->findOrFail($oauth['company_id']);
+            $meta = MetaClient::forCompany($company);
+
             $token = $meta->exchangeCode((string) $request->query('code'), route('social.callback'));
             $userToken = $token['access_token'];
 

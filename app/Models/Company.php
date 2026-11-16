@@ -10,11 +10,22 @@ class Company extends Model
 {
     use SoftDeletes;
 
-    protected $fillable = ['name', 'email', 'phone', 'address', 'is_active'];
+    protected $fillable = ['name', 'email', 'phone', 'address', 'is_active', 'meta_app_id', 'meta_app_secret'];
+
+    protected $hidden = ['meta_app_secret'];
 
     protected function casts(): array
     {
-        return ['is_active' => 'boolean'];
+        return [
+            'is_active' => 'boolean',
+            'meta_app_secret' => 'encrypted',
+        ];
+    }
+
+    /** True when the company has entered its own Meta app ID and secret. */
+    public function hasMetaApp(): bool
+    {
+        return filled($this->meta_app_id) && filled($this->meta_app_secret);
     }
 
     public function branches(): HasMany

@@ -2,29 +2,35 @@
 
 namespace App\Services\Meta;
 
+use App\Models\Company;
 use Illuminate\Support\Facades\Http;
 
 /**
  * Thin wrapper around the Meta Graph API (read-only GET calls).
+ * Each company uses its own Meta app, so build it with forCompany().
  */
 class MetaClient
 {
     protected string $base;
 
-    public function __construct()
+    public function __construct(protected string $appId, protected string $appSecret)
     {
         $this->base = 'https://graph.facebook.com/' . config('meta.graph_version');
     }
 
-    public static function isConfigured(): bool
+    public static function forCompany(Company $company): self
     {
-        return filled(config('meta.app_id')) && filled(config('meta.app_secret'));
+        if (!$company->hasMetaApp()) {
+            throw new MetaApiException("{$company->name} has no Meta App ID / App Secret. Add them in the company settings.");
+        }
+
+        return new self($company->meta_app_id, $company->meta_app_secret);
     }
 
     public function loginUrl(string $redirectUri, string $state): string
     {
         return 'https://www.facebook.com/' . config('meta.graph_version') . '/dialog/oauth?' . http_build_query([
-            'client_id' => config('meta.app_id'),
+            'client_id' => $this->appId,
             'redirect_uri' => $redirectUri,
             'state' => $state,
             'response_type' => 'code',
@@ -40,16 +46,16 @@ class MetaClient
     public function exchangeCode(string $code, string $redirectUri): array
     {
         $short = $this->request('oauth/access_token', [
-            'client_id' => config('meta.app_id'),
-            'client_secret' => config('meta.app_secret'),
+            'client_id' => $this->appId,
+            'client_secret' => $this->appSecret,
             'redirect_uri' => $redirectUri,
             'code' => $code,
         ]);
 
         $long = $this->request('oauth/access_token', [
             'grant_type' => 'fb_exchange_token',
-            'client_id' => config('meta.app_id'),
-            'client_secret' => config('meta.app_secret'),
+            'client_id' => $this->appId,
+            'client_secret' => $this->appSecret,
             'fb_exchange_token' => $short['access_token'],
         ]);
 
@@ -63,7 +69,7 @@ class MetaClient
     {
         return $this->request($path, $params + [
             'access_token' => $token,
-            'appsecret_proof' => hash_hmac('sha256', $token, config('meta.app_secret')),
+            'appsecret_proof' => hash_hmac('sha256', $token, $this->appSecret),
         ]);
     }
 

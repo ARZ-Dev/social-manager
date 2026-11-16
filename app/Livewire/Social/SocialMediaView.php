@@ -8,7 +8,6 @@ use App\Models\Social\SocialAd;
 use App\Models\Social\SocialConversation;
 use App\Models\Social\SocialInsight;
 use App\Models\Social\SocialPost;
-use App\Services\Meta\MetaClient;
 use App\Services\Meta\MetaSyncService;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Livewire\Attributes\Url;
@@ -166,7 +165,7 @@ class SocialMediaView extends Component
             'companies' => $viewer->canAccessAllCompanies() ? Company::orderBy('name')->get() : collect(),
             'currentCompany' => $this->currentCompany(),
             'accounts' => $this->accountsQuery()->orderByRaw("FIELD(platform, 'facebook', 'instagram', 'ads')")->orderBy('name')->get(),
-            'metaConfigured' => MetaClient::isConfigured(),
+            'metaConfigured' => (bool) $this->currentCompany()?->hasMetaApp(),
         ];
 
         if ($this->tab === 'posts') {

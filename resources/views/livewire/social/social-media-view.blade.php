@@ -31,18 +31,24 @@
                         </button>
                     @endcan
                     @can('social-connect')
-                        <a href="{{ route('social.connect', ['company' => $currentCompany->id]) }}" class="btn btn-primary">
+                        <a href="{{ $metaConfigured ? route('social.connect', ['company' => $currentCompany->id]) : '#' }}" class="btn btn-primary {{ $metaConfigured ? '' : 'disabled' }}">
                             <i class="ti ti-plug-connected me-1"></i> Connect Facebook &amp; Instagram
                         </a>
                     @endcan
                 </div>
             @endif
         </div>
-        @unless($metaConfigured)
+        @if($currentCompany && !$metaConfigured)
             <div class="alert alert-warning mx-4 mb-4">
-                The Meta app isn't configured yet. Set <code>META_APP_ID</code> and <code>META_APP_SECRET</code> in <code>.env</code>.
+                <strong>{{ $currentCompany->name }}</strong> has no Meta app yet. Each company connects through its own Meta App ID and App Secret.
+                @can('company-edit')
+                    <a href="{{ route('companies.edit', $currentCompany->id) }}#meta-app" class="alert-link">Add them in the company settings</a>
+                    (the form explains how to get them).
+                @else
+                    Ask an administrator to add them in the company settings.
+                @endcan
             </div>
-        @endunless
+        @endif
     </div>
 
     @if(!$currentCompany)

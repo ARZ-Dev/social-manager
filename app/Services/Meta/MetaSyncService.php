@@ -25,9 +25,7 @@ class MetaSyncService
 
     protected CarbonInterface $since;
 
-    public function __construct(protected MetaClient $meta)
-    {
-    }
+    protected MetaClient $meta;
 
     /**
      * @return array{counts: array<string,int>, warnings: string[]}
@@ -36,6 +34,15 @@ class MetaSyncService
     {
         $this->warnings = [];
         $this->badMetrics = [];
+
+        // Calls go through the owning company's own Meta app.
+        try {
+            $this->meta = MetaClient::forCompany($account->company);
+        } catch (MetaApiException $e) {
+            $account->update(['last_sync_error' => $e->getMessage()]);
+            return ['counts' => [], 'warnings' => [$e->getMessage()]];
+        }
+
         $this->since = now()->subDays(config('meta.history_days'))->startOfDay();
         $counts = [];
 

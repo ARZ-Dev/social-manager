@@ -1,25 +1,38 @@
 # Social Media (Facebook, Instagram, Boosts) — setup
 
-## 1. Meta app settings (developers.facebook.com → your app)
+Each company connects through **its own Meta app**. The App ID and App Secret are
+entered per company in **Companies → Edit → Meta app**. The same instructions are
+shown in the form under "How do I get the App ID and App Secret?".
 
-1. **Use cases / products:** add *Facebook Login for Business*, *Instagram* (Graph API, via Facebook Login), *Messenger*, and *Marketing API*.
-2. **Facebook Login → Settings → Valid OAuth Redirect URIs:** add
-   `{APP_URL}/social/callback` (e.g. `https://yourdomain.com/social/callback`).
-   Meta requires HTTPS for anything except `localhost`.
-3. **Permissions** the app asks for (all read-only, listed in `config/meta.php`):
-   `business_management, pages_show_list, pages_read_engagement, pages_read_user_content, read_insights, pages_messaging, instagram_basic, instagram_manage_insights, instagram_manage_comments, instagram_manage_messages, ads_read`.
-   While the app is in **Development** mode only people with a role on the app (admins, developers, testers) can connect. To let any company connect, submit these permissions for **App Review** and switch the app to **Live**.
+## 1. Create the company's Meta app
 
-## 2. `.env`
+1. Go to <https://developers.facebook.com/apps> and log in with the Facebook account
+   that manages the company's Page (register as a developer if asked, it's free).
+2. **Create app** → use case **Other** → app type **Business**. Name it and pick the
+   company's Business portfolio if it has one.
+3. Add products: **Facebook Login for Business**, **Instagram** (API setup with
+   Facebook login), **Messenger**, **Marketing API**.
+4. **Facebook Login for Business → Settings → Valid OAuth Redirect URIs:** add
+   `{APP_URL}/social/callback` (the company form shows the exact URL with a Copy
+   button). Meta requires HTTPS except for `localhost`.
+5. **App settings → Basic:** copy the **App ID** and the **App Secret** (click *Show*)
+   and paste them into the company form. Also fill in Privacy Policy URL, icon and
+   category. Meta needs these before going live.
+6. **Development mode:** only people listed under **App roles → Roles** can connect.
+   Add whoever will click *Connect*.
+7. **Going live:** request these permissions in **App Review**, complete **Business
+   verification**, then switch the app to **Live**:
+   `business_management, pages_show_list, pages_read_engagement, pages_read_user_content, read_insights, pages_messaging, instagram_basic, instagram_manage_insights, instagram_manage_comments, instagram_manage_messages, ads_read`
+
+The secret is stored encrypted and never shown again. Leave the field blank when
+editing to keep it, and clear the App ID to remove both.
+
+## 2. Optional `.env` settings (apply to all companies)
 
 ```
-META_APP_ID=your-app-id
-META_APP_SECRET=your-app-secret
 META_GRAPH_VERSION=v23.0
 META_HISTORY_DAYS=90
 ```
-
-Then run `php artisan config:clear`.
 
 ## 3. Permissions in the app
 
@@ -32,14 +45,17 @@ Assign these from **Roles** to any role:
 | `social-disconnect` | Unlink an account (deletes its fetched data) |
 | `social-sync`       | Use the **Fetch data** button             |
 
+Editing a company's Meta app needs `company-edit`.
+
 ## 4. How it works
 
-- Each company links its own accounts. Super Admins choose the company with the selector at the top; other users always see their own company.
-- **Connect** → Facebook login → choose Pages (their Instagram business account is linked automatically) and ad accounts.
-- **Fetch data** pulls the last 90 days of posts, comments, post and account insights, Messenger / Instagram conversations, and boosts (ads), and stores them. It runs while you wait.
-- If Meta rejects something (missing permission, deprecated metric), the fetch continues and the account shows **"Last fetch had warnings"** with details. Metric names can be adjusted in `config/meta.php`.
+- Super Admins choose the company at the top of **Social Media**. Other users always see their own company.
+- **Connect** → Facebook login (using the company's app) → choose Pages (their Instagram business account is linked automatically) and ad accounts.
+- **Fetch data** pulls the last 90 days of posts, comments, insights, Messenger / Instagram conversations and boosts.
+- If Meta rejects something, the fetch continues and the account shows **"Last fetch had warnings"**.
 
 ## 5. Token lifetimes
 
-- Page / Instagram access does not expire unless the person changes their password, removes the app, or loses access to the Page.
-- **Ad account access expires after ~60 days.** The accounts list shows the expiry; click **Connect** again to renew it.
+- Page / Instagram access doesn't expire unless the person changes their password, removes the app, or loses access to the Page.
+- **Ad account access expires after ~60 days.** Click **Connect** again to renew it.
+- **Changing a company's App ID/Secret** invalidates existing connections. Click **Connect** again afterwards.

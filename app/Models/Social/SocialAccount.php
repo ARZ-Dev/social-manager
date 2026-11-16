@@ -31,6 +31,28 @@ class SocialAccount extends Model
         ];
     }
 
+    /**
+     * Remove fetched data in code too: the database's foreign-key cascades
+     * don't run on MyISAM tables.
+     */
+    protected static function booted(): void
+    {
+        static::deleting(function (SocialAccount $account) {
+            self::where('parent_id', $account->id)->get()->each->delete();
+
+            $postIds = $account->posts()->pluck('id');
+            SocialComment::whereIn('social_post_id', $postIds)->delete();
+            $account->posts()->delete();
+
+            $convIds = $account->conversations()->pluck('id');
+            SocialMessage::whereIn('social_conversation_id', $convIds)->delete();
+            $account->conversations()->delete();
+
+            $account->insights()->delete();
+            $account->ads()->delete();
+        });
+    }
+
     public function company(): BelongsTo
     {
         return $this->belongsTo(Company::class);

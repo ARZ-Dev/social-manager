@@ -285,12 +285,13 @@ class MetaSyncService
     protected function syncAccountInsights(SocialAccount $account, string $metricSet, string $token, int $maxDays): int
     {
         $n = 0;
+        $end = now(); // fixed once, so the loop always terminates
 
         foreach (config("meta.metrics.$metricSet") as $metric) {
             $from = $this->since->copy();
             try {
-                while ($from->lt(now())) {
-                    $to = $from->copy()->addDays($maxDays)->min(now());
+                while ($from->lt($end)) {
+                    $to = $from->copy()->addDays($maxDays)->min($end);
                     $res = $this->meta->get($account->external_id . '/insights', [
                         'metric' => $metric,
                         'period' => 'day',

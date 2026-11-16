@@ -11,6 +11,9 @@ use App\Livewire\RolesPermissions\PermissionView;
 use App\Livewire\RolesPermissions\RoleView;
 use App\Livewire\Companies\CompanyView;
 use App\Livewire\Companies\CompanyForm;
+use App\Livewire\Social\SocialMediaView;
+use App\Livewire\Social\SocialConnectSelect;
+use App\Http\Controllers\SocialConnectController;
 
 Route::get('/', [HomeController::class, 'index'])->name('home');
 
@@ -48,6 +51,17 @@ Route::middleware(['auth'])->group(function () {
         Route::get('/', CompanyView::class)->name('companies');
         Route::get('/create', CompanyForm::class)->name('companies.create');
         Route::get('/edit/{id}', CompanyForm::class)->name('companies.edit');
+    });
+
+    // |--------------------------------------------------------------------------
+    // |Social Media (Facebook, Instagram, Ads)
+    // |--------------------------------------------------------------------------
+
+    Route::group(['prefix' => 'social'], function () {
+        Route::get('/', SocialMediaView::class)->name('social');
+        Route::get('/connect', [SocialConnectController::class, 'redirect'])->name('social.connect');
+        Route::get('/callback', [SocialConnectController::class, 'callback'])->name('social.callback');
+        Route::get('/connect/select', SocialConnectSelect::class)->name('social.select');
     });
 
 

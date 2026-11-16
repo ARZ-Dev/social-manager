@@ -68,6 +68,15 @@
 			</li>
 			@endcan
 
+			@can('social-list')
+			<li class="menu-item {{ request()->is('social*') ? "active" : "" }}">
+				<a href="{{ route('social') }}" class="menu-link">
+					<i class="menu-icon tf-icons ti ti-brand-instagram"></i>
+					<div data-i18n="Social Media">Social Media</div>
+				</a>
+			</li>
+			@endcan
+
 
 		</ul>
 

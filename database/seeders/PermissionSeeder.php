@@ -45,6 +45,12 @@ class PermissionSeeder extends Seeder
             'branch-edit',
             'branch-delete',
 
+            // Social Media Page
+            'social-list',
+            'social-connect',
+            'social-disconnect',
+            'social-sync',
+
             // Contact Page
             'contact-list',
             'contact-delete',

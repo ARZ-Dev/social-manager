@@ -9,6 +9,17 @@
         "dev"
       ],
       "port": 5173
+    },
+    {
+      "name": "app",
+      "runtimeExecutable": "php",
+      "runtimeArgs": [
+        "artisan",
+        "serve",
+        "--port=8000"
+      ],
+      "port": 8000,
+      "url": "http://localhost:8000"
     }
   ]
 }

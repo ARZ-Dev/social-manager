@@ -5,7 +5,9 @@ namespace App\Livewire\Social;
 use App\Models\Company;
 use App\Models\Social\SocialAccount;
 use App\Models\Social\SocialAd;
+use App\Models\Social\SocialAdBreakdown;
 use App\Models\Social\SocialConversation;
+use App\Models\Social\SocialDemographic;
 use App\Models\Social\SocialInsight;
 use App\Models\Social\SocialPost;
 use App\Services\Meta\MetaSyncService;
@@ -16,7 +18,8 @@ use Livewire\WithPagination;
 
 /**
  * Social Media tab: a company's linked Facebook / Instagram / ad accounts and
- * the data fetched from them (posts, comments, insights, messages, boosts).
+ * the data fetched from them (posts, comments, insights, audience, messages,
+ * boosts and their breakdowns).
  */
 class SocialMediaView extends Component
 {
@@ -36,6 +39,13 @@ class SocialMediaView extends Component
     public ?int $openPost = null;
     public ?int $openConversation = null;
 
+    // Audience tab: which Instagram audience to show.
+    public string $audienceMetric = 'follower_demographics';
+
+    // Boosts tab: breakdown set and, optionally, the one ad it is limited to.
+    public string $breakdown = 'age_gender';
+    public ?int $breakdownAd = null;
+
     protected $listeners = ['delete' => 'disconnect'];
 
     public function mount()
@@ -53,20 +63,37 @@ class SocialMediaView extends Component
     public function updatedCompany()
     {
         $this->account = '';
-        $this->reset('openPost', 'openConversation');
+        $this->reset('openPost', 'openConversation', 'breakdownAd');
         $this->resetPage();
     }
 
     public function updatedAccount()
     {
+        $this->reset('breakdownAd');
         $this->resetPage();
     }
 
     public function setTab($tab)
     {
-        $this->tab = in_array($tab, ['posts', 'insights', 'messages', 'boosts']) ? $tab : 'posts';
-        $this->reset('openPost', 'openConversation');
+        $this->tab = in_array($tab, ['posts', 'insights', 'audience', 'messages', 'boosts']) ? $tab : 'posts';
+        $this->reset('openPost', 'openConversation', 'breakdownAd');
         $this->resetPage();
+    }
+
+    public function setAudienceMetric($metric)
+    {
+        $metrics = config('meta.demographics.instagram_account.metrics');
+        $this->audienceMetric = in_array($metric, $metrics) ? $metric : $metrics[0];
+    }
+
+    public function setBreakdown($name)
+    {
+        $this->breakdown = array_key_exists($name, config('meta.ad_breakdowns')) ? $name : 'age_gender';
+    }
+
+    public function toggleAdBreakdown($id)
+    {
+        $this->breakdownAd = $this->breakdownAd === $id ? null : $id;
     }
 
     public function togglePost($id)
@@ -194,6 +221,18 @@ class SocialMediaView extends Component
                 ->get();
         }
 
+        if ($this->tab === 'audience') {
+            $ids = $this->accountIds('social');
+            $data['audienceAccounts'] = SocialAccount::whereIn('id', $ids)
+                ->orderByRaw("FIELD(platform, 'facebook', 'instagram')")->orderBy('name')->get();
+            // Instagram rows for the chosen audience; Facebook Pages only have one.
+            $data['demographics'] = SocialDemographic::whereIn('social_account_id', $ids)
+                ->whereIn('metric', array_merge([$this->audienceMetric], array_keys(config('meta.demographics.facebook_page'))))
+                ->orderByDesc('value')
+                ->get()
+                ->groupBy(['social_account_id', 'dimension']);
+        }
+
         if ($this->tab === 'messages') {
             $data['conversations'] = SocialConversation::with('account')
                 ->whereIn('social_account_id', $this->accountIds('social'))
@@ -215,6 +254,21 @@ class SocialMediaView extends Component
             $data['adTotals'] = SocialAd::whereIn('social_account_id', $ids)
                 ->selectRaw('SUM(spend) as spend, SUM(impressions) as impressions, SUM(reach) as reach, SUM(clicks) as clicks')
                 ->first();
+
+            $data['breakdownAdModel'] = $this->breakdownAd
+                ? SocialAd::whereIn('social_account_id', $ids)->find($this->breakdownAd)
+                : null;
+            $rows = SocialAdBreakdown::whereIn('social_account_id', $ids)->where('breakdown', $this->breakdown);
+            if ($ad = $data['breakdownAdModel']) {
+                $rows->where('social_account_id', $ad->social_account_id)->where('ad_external_id', $ad->external_id);
+            }
+            $rows->selectRaw('segment, SUM(spend) as spend, SUM(impressions) as impressions, SUM(reach) as reach, SUM(clicks) as clicks')
+                ->groupBy('segment');
+            // Age & gender reads best in age order; the others by spend.
+            $this->breakdown === 'age_gender'
+                ? $rows->orderBy('segment')
+                : $rows->orderByDesc('spend')->orderByDesc('impressions');
+            $data['breakdownRows'] = $rows->limit(50)->get();
         }
 
         return view('livewire.social.social-media-view', $data);

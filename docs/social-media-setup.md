@@ -52,6 +52,13 @@ Editing a company's Meta app needs `company-edit`.
 - Super Admins choose the company at the top of **Social Media**. Other users always see their own company.
 - **Connect** → Facebook login (using the company's app) → choose Pages (their Instagram business account is linked automatically) and ad accounts.
 - **Fetch data** pulls the last 90 days of posts, comments, insights, Messenger / Instagram conversations and boosts.
+- It also pulls a snapshot of each account's **audience** (shown in the **Audience** tab, replaced on every fetch):
+  - **Facebook Pages:** followers by country and city. Meta removed age and gender for Pages in 2024.
+  - **Instagram:** followers and the engaged audience (people who interacted this month) by age, gender, country and city.
+    Meta only returns these for accounts with at least 100 followers (or 100 engagements), and lists at most 45 countries / cities.
+- For ad accounts it also splits each ad's spend, impressions, reach and clicks by **age & gender, country, placement and device**
+  (the **Breakdown** card in the **Boosts** tab; click the chart icon on an ad to see that ad alone).
+  The breakdowns and audience settings are in `config/meta.php` (`demographics`, `ad_breakdowns`).
 - If Meta rejects something, the fetch continues and the account shows **"Last fetch had warnings"**.
 
 ## 5. Token lifetimes

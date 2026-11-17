@@ -23,7 +23,7 @@
 			<li class="menu-item {{ request()->is('dashboard') ? "active" : "" }}">
 				<a href="{{ route('dashboard') }}" class="menu-link">
 					<i class="menu-icon tf-icons ti ti-smart-home"></i>
-					<div data-i18n="Dashboardssss">Dashboardssss</div>
+					<div data-i18n="Dashboard">Dashboard</div>
 				</a>
 			</li>
 			

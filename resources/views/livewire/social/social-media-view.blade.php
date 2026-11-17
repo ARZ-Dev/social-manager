@@ -101,7 +101,7 @@
     {{-- Tabs --}}
     <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
         <ul class="nav nav-pills">
-            @foreach(['posts' => ['Posts & comments', 'ti-photo'], 'insights' => ['Insights', 'ti-chart-bar'], 'messages' => ['Messages', 'ti-messages'], 'boosts' => ['Boosts', 'ti-speakerphone']] as $key => [$label, $icon])
+            @foreach(['posts' => ['Posts & comments', 'ti-photo'], 'insights' => ['Insights', 'ti-chart-bar'], 'audience' => ['Audience', 'ti-users'], 'messages' => ['Messages', 'ti-messages'], 'boosts' => ['Boosts', 'ti-speakerphone']] as $key => [$label, $icon])
                 <li class="nav-item">
                     <button type="button" wire:click="setTab('{{ $key }}')" class="nav-link {{ $tab === $key ? 'active' : '' }}">
                         <i class="ti {{ $icon }} me-1"></i> {{ $label }}
@@ -117,7 +117,7 @@
         </select>
     </div>
 
-    <div wire:loading.class="opacity-50" wire:target="setTab,account,gotoPage,nextPage,previousPage">
+    <div wire:loading.class="opacity-50" wire:target="setTab,account,gotoPage,nextPage,previousPage,setAudienceMetric,setBreakdown,toggleAdBreakdown">
 
     {{-- Posts --}}
     @if($tab === 'posts')
@@ -250,6 +250,86 @@
         </div>
     @endif
 
+    {{-- Audience --}}
+    @if($tab === 'audience')
+        @php
+            $igAudiences = ['follower_demographics' => 'Followers', 'engaged_audience_demographics' => 'Engaged audience'];
+            $dimensionLabels = ['age' => 'Age', 'gender' => 'Gender', 'country' => 'Top countries', 'city' => 'Top cities'];
+        @endphp
+        @if($audienceAccounts->contains('platform', 'instagram'))
+            <div class="d-flex align-items-center gap-2 mb-3">
+                <small class="text-muted">Instagram audience:</small>
+                <div class="btn-group btn-group-sm">
+                    @foreach($igAudiences as $metric => $label)
+                        <button type="button" wire:click="setAudienceMetric('{{ $metric }}')" class="btn {{ $audienceMetric === $metric ? 'btn-primary' : 'btn-outline-primary' }}">{{ $label }}</button>
+                    @endforeach
+                </div>
+            </div>
+        @endif
+        @forelse($audienceAccounts as $acc)
+            @php
+                $byDimension = $demographics[$acc->id] ?? collect();
+                $asOf = $byDimension->collapse()->max('updated_at');
+            @endphp
+            <div class="card mb-3" wire:key="aud-{{ $acc->id }}-{{ $audienceMetric }}">
+                <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+                    <h6 class="mb-0"><i class="ti {{ $platformIcon[$acc->platform] }}"></i> {{ $acc->username ? '@' . $acc->username : $acc->name }}</h6>
+                    <small class="text-muted">
+                        @if($acc->platform === 'facebook')
+                            Followers by location
+                        @else
+                            {{ $igAudiences[$audienceMetric] }}{{ $audienceMetric === 'engaged_audience_demographics' ? ' (people who interacted this month)' : '' }}
+                        @endif
+                        @if($asOf) · as of {{ \Illuminate\Support\Carbon::parse($asOf)->format('d M Y') }} @endif
+                    </small>
+                </div>
+                <div class="card-body">
+                    @if($byDimension->isEmpty())
+                        <p class="text-muted mb-0">
+                            No audience data yet. Click <strong>Fetch data</strong>.
+                            @if($acc->platform === 'instagram')
+                                Meta only shares this for accounts with at least 100 followers (or 100 engagements this month for the engaged audience).
+                            @endif
+                        </p>
+                    @else
+                        <div class="row g-4">
+                            @foreach($dimensionLabels as $dim => $label)
+                                @continue(!$byDimension->has($dim))
+                                @php
+                                    $total = $byDimension[$dim]->sum('value') ?: 1;
+                                    $rows = $dim === 'age' ? $byDimension[$dim]->sortBy('segment') : $byDimension[$dim]->take(10);
+                                @endphp
+                                <div class="col-12 col-md-6 col-xl-3">
+                                    <h6 class="mb-2">{{ $label }}</h6>
+                                    @foreach($rows as $row)
+                                        <div class="mb-2">
+                                            <div class="d-flex justify-content-between small">
+                                                <span class="text-truncate me-2">{{ \App\Models\Social\SocialDemographic::label($dim, $row->segment) }}</span>
+                                                <span class="text-nowrap">{{ number_format($row->value) }} <span class="text-muted">· {{ round($row->value / $total * 100) }}%</span></span>
+                                            </div>
+                                            <div class="progress" style="height: 6px">
+                                                <div class="progress-bar" role="progressbar" style="width: {{ round($row->value / $total * 100, 1) }}%"></div>
+                                            </div>
+                                        </div>
+                                    @endforeach
+                                </div>
+                            @endforeach
+                        </div>
+                        <p class="small text-muted mt-3 mb-0">
+                            @if($acc->platform === 'facebook')
+                                Meta no longer shares the age and gender of Facebook Page followers.
+                            @else
+                                Meta lists at most 45 countries / cities and leaves out people it has no data for, so totals can be below the follower count.
+                            @endif
+                        </p>
+                    @endif
+                </div>
+            </div>
+        @empty
+            <div class="card"><div class="card-body text-muted">Audience data comes from Facebook Pages and Instagram accounts.</div></div>
+        @endforelse
+    @endif
+
     {{-- Messages --}}
     @if($tab === 'messages')
         <div class="row g-3">
@@ -307,13 +387,81 @@
                 </div>
             @endforeach
         </div>
+
+        {{-- Results split by audience segment, placement or device --}}
+        @php
+            $breakdownLabels = ['age_gender' => 'Age & gender', 'country' => 'Country', 'placement' => 'Placement', 'device' => 'Device'];
+            $spendTotal = (float) $breakdownRows->sum('spend') ?: 1;
+        @endphp
+        <div class="card mb-3">
+            <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+                <div>
+                    <h6 class="mb-0">Breakdown</h6>
+                    <small class="text-muted">
+                        @if($breakdownAdModel)
+                            Ad: <strong>{{ $breakdownAdModel->name }}</strong> ·
+                            <a href="#" wire:click.prevent="toggleAdBreakdown({{ $breakdownAdModel->id }})">show all ads</a>
+                        @else
+                            All ads, last {{ config('meta.history_days') }} days. Use <i class="ti ti-chart-pie"></i> on an ad to see it alone.
+                        @endif
+                    </small>
+                </div>
+                <ul class="nav nav-pills">
+                    @foreach(array_keys(config('meta.ad_breakdowns')) as $name)
+                        <li class="nav-item">
+                            <button type="button" wire:click="setBreakdown('{{ $name }}')" class="nav-link py-1 px-3 {{ $breakdown === $name ? 'active' : '' }}">
+                                {{ $breakdownLabels[$name] ?? ucfirst(str_replace('_', ' ', $name)) }}
+                            </button>
+                        </li>
+                    @endforeach
+                </ul>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-sm mb-0">
+                    <thead>
+                        <tr>
+                            <th>Segment</th>
+                            <th class="text-end">Spend</th>
+                            <th style="min-width: 120px">Share of spend</th>
+                            <th class="text-end">Impr.</th>
+                            @if($breakdownAdModel)<th class="text-end">Reach</th>@endif
+                            <th class="text-end">Clicks</th>
+                            <th class="text-end">CTR</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @forelse($breakdownRows as $row)
+                            <tr>
+                                <td>{{ \App\Models\Social\SocialAdBreakdown::label($breakdown, $row->segment) }}</td>
+                                <td class="text-end">{{ number_format((float) $row->spend, 2) }}</td>
+                                <td class="align-middle">
+                                    <div class="progress" style="height: 6px">
+                                        <div class="progress-bar bg-warning" role="progressbar" style="width: {{ round((float) $row->spend / $spendTotal * 100, 1) }}%"></div>
+                                    </div>
+                                </td>
+                                <td class="text-end">{{ number_format((int) $row->impressions) }}</td>
+                                @if($breakdownAdModel)<td class="text-end">{{ number_format((int) $row->reach) }}</td>@endif
+                                <td class="text-end">{{ number_format((int) $row->clicks) }}</td>
+                                <td class="text-end">{{ $row->impressions ? number_format($row->clicks / $row->impressions * 100, 2) . '%' : '–' }}</td>
+                            </tr>
+                        @empty
+                            <tr><td colspan="7" class="text-muted">No breakdown fetched yet. Click Fetch data.</td></tr>
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
+            @unless($breakdownAdModel)
+                <div class="card-footer small text-muted py-2">Reach is shown for one ad at a time: the same person can see several ads, so it can't be added up.</div>
+            @endunless
+        </div>
+
         <div class="card">
             <div class="table-responsive">
                 <table class="table mb-0">
-                    <thead><tr><th>Ad</th><th>Campaign</th><th>Status</th><th>Started</th><th class="text-end">Spend</th><th class="text-end">Impr.</th><th class="text-end">Reach</th><th class="text-end">Clicks</th></tr></thead>
+                    <thead><tr><th>Ad</th><th>Campaign</th><th>Status</th><th>Started</th><th class="text-end">Spend</th><th class="text-end">Impr.</th><th class="text-end">Reach</th><th class="text-end">Clicks</th><th></th></tr></thead>
                     <tbody>
                         @forelse($ads as $ad)
-                            <tr wire:key="ad-{{ $ad->id }}">
+                            <tr wire:key="ad-{{ $ad->id }}" class="{{ $breakdownAd === $ad->id ? 'table-active' : '' }}">
                                 <td>{{ $ad->name }}</td>
                                 <td>{{ $ad->campaign_name }} @if($ad->objective)<br><small class="text-muted">{{ str_replace('_', ' ', strtolower($ad->objective)) }}</small>@endif</td>
                                 <td><span class="badge {{ $ad->effective_status === 'ACTIVE' ? 'bg-label-success' : 'bg-label-secondary' }}">{{ str_replace('_', ' ', strtolower($ad->effective_status ?? $ad->status)) }}</span></td>
@@ -322,9 +470,14 @@
                                 <td class="text-end">{{ number_format($ad->impressions) }}</td>
                                 <td class="text-end">{{ number_format($ad->reach) }}</td>
                                 <td class="text-end">{{ number_format($ad->clicks) }}</td>
+                                <td class="text-end">
+                                    <button type="button" wire:click="toggleAdBreakdown({{ $ad->id }})" class="btn btn-sm btn-icon {{ $breakdownAd === $ad->id ? 'btn-primary' : 'btn-label-secondary' }}" title="Breakdown for this ad">
+                                        <i class="ti ti-chart-pie"></i>
+                                    </button>
+                                </td>
                             </tr>
                         @empty
-                            <tr><td colspan="8" class="text-muted">No boosts fetched. Link an ad account when connecting, then click Fetch data.</td></tr>
+                            <tr><td colspan="9" class="text-muted">No boosts fetched. Link an ad account when connecting, then click Fetch data.</td></tr>
                         @endforelse
                     </tbody>
                 </table>

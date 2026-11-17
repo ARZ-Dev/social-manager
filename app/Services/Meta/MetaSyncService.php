@@ -4,15 +4,18 @@ namespace App\Services\Meta;
 
 use App\Models\Social\SocialAccount;
 use App\Models\Social\SocialAd;
+use App\Models\Social\SocialAdBreakdown;
 use App\Models\Social\SocialConversation;
+use App\Models\Social\SocialDemographic;
 use App\Models\Social\SocialInsight;
 use App\Models\Social\SocialPost;
 use Carbon\Carbon;
 use Carbon\CarbonInterface;
+use Illuminate\Support\Facades\DB;
 
 /**
- * Pulls posts, comments, insights, messages and boosts for linked accounts and
- * stores them. Each section is independent: a failure (missing permission,
+ * Pulls posts, comments, insights, audience demographics, messages, boosts and
+ * their breakdowns for linked accounts and stores them. Each section is independent: a failure (missing permission,
  * deprecated metric...) is recorded as a warning and the rest continues.
  */
 class MetaSyncService
@@ -65,7 +68,7 @@ class MetaSyncService
     protected function syncFacebook(SocialAccount $account): array
     {
         $token = $account->access_token;
-        $counts = ['posts' => 0, 'comments' => 0, 'insights' => 0, 'conversations' => 0];
+        $counts = ['posts' => 0, 'comments' => 0, 'insights' => 0, 'audience segments' => 0, 'conversations' => 0];
 
         $this->attempt($account, 'page info', function () use ($account, $token) {
             $info = $this->meta->get($account->external_id, ['fields' => 'name,followers_count,fan_count,picture{url}'], $token);
@@ -112,6 +115,8 @@ class MetaSyncService
             $counts['insights'] = $this->syncAccountInsights($account, 'facebook_page', $token, 90);
         });
 
+        $counts['audience segments'] = $this->syncPageDemographics($account, $token);
+
         $this->attempt($account, 'Messenger conversations', function () use ($account, $token, &$counts) {
             $counts['conversations'] = $this->syncConversations($account, $account->external_id, null, $token);
         });
@@ -156,7 +161,7 @@ class MetaSyncService
     protected function syncInstagram(SocialAccount $account): array
     {
         $token = $account->access_token;
-        $counts = ['posts' => 0, 'comments' => 0, 'insights' => 0, 'conversations' => 0];
+        $counts = ['posts' => 0, 'comments' => 0, 'insights' => 0, 'audience segments' => 0, 'conversations' => 0];
 
         $this->attempt($account, 'profile', function () use ($account, $token) {
             $info = $this->meta->get($account->external_id, [
@@ -206,6 +211,8 @@ class MetaSyncService
         $this->attempt($account, 'account insights', function () use ($account, $token, &$counts) {
             $counts['insights'] = $this->syncAccountInsights($account, 'instagram_account', $token, 30);
         });
+
+        $counts['audience segments'] = $this->syncInstagramDemographics($account, $token);
 
         // Instagram DMs are read through the linked Facebook Page.
         if ($account->parent) {
@@ -333,6 +340,121 @@ class MetaSyncService
         return $n;
     }
 
+    // ------------------------------------------------------------ Audience
+
+    /**
+     * Followers by country and city of a Facebook Page.
+     */
+    protected function syncPageDemographics(SocialAccount $account, string $token): int
+    {
+        $n = 0;
+
+        foreach (config('meta.demographics.facebook_page') as $metric => $dimension) {
+            try {
+                $res = $this->meta->get($account->external_id . '/insights', ['metric' => $metric], $token);
+                $n += $this->storeDemographics($account, $metric, $dimension, $this->segments($res, $dimension));
+            } catch (MetaApiException $e) {
+                $this->warnOnce($account, "audience metric '$metric'", $e);
+            }
+        }
+
+        return $n;
+    }
+
+    /**
+     * Followers and engaged audience of an Instagram account by age, gender,
+     * country and city. One request per metric and breakdown.
+     */
+    protected function syncInstagramDemographics(SocialAccount $account, string $token): int
+    {
+        $cfg = config('meta.demographics.instagram_account');
+        $n = 0;
+
+        foreach ($cfg['metrics'] as $metric) {
+            foreach ($cfg['breakdowns'] as $dimension) {
+                try {
+                    $res = $this->meta->get($account->external_id . '/insights', [
+                        'metric' => $metric,
+                        'period' => 'lifetime',
+                        'metric_type' => 'total_value',
+                        'timeframe' => $cfg['timeframe'],
+                        'breakdown' => $dimension,
+                    ], $token);
+                    $n += $this->storeDemographics($account, $metric, $dimension, $this->segments($res, $dimension));
+                } catch (MetaApiException $e) {
+                    // Usually the account is under Meta's 100 followers / engagements threshold.
+                    $this->warnOnce($account, "audience metric '$metric'", $e);
+                }
+            }
+        }
+
+        return $n;
+    }
+
+    /**
+     * Turn a demographics response into [segment => count]. Handles both shapes:
+     * Instagram's total_value.breakdowns and the Page metrics' map of
+     * segment => count in values[].value (the latest one wins).
+     *
+     * @return array<string,int>
+     */
+    protected function segments(array $res, string $dimension): array
+    {
+        $out = [];
+
+        foreach ($res['data'] ?? [] as $row) {
+            foreach ($row['total_value']['breakdowns'] ?? [] as $breakdown) {
+                $i = array_search($dimension, $breakdown['dimension_keys'] ?? [], true);
+                foreach ($breakdown['results'] ?? [] as $result) {
+                    $values = $result['dimension_values'] ?? [];
+                    $segment = $i !== false ? ($values[$i] ?? null) : ($values ? $values[count($values) - 1] : null);
+                    if ($segment !== null && $segment !== '') {
+                        $out[$segment] = ($out[$segment] ?? 0) + (int) ($result['value'] ?? 0);
+                    }
+                }
+            }
+
+            $latest = collect($row['values'] ?? [])->last(fn ($v) => is_array($v['value'] ?? null) && $v['value']);
+            foreach ($latest['value'] ?? [] as $segment => $value) {
+                $out[(string) $segment] = (int) $value;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Replace an account's snapshot for one metric and dimension.
+     */
+    protected function storeDemographics(SocialAccount $account, string $metric, string $dimension, array $segments): int
+    {
+        $now = now();
+        $rows = [];
+        foreach ($segments as $segment => $value) {
+            $rows[] = [
+                'social_account_id' => $account->id,
+                'metric' => $metric,
+                'dimension' => $dimension,
+                'segment' => mb_substr((string) $segment, 0, 150),
+                'value' => $value,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ];
+        }
+
+        DB::transaction(function () use ($account, $metric, $dimension, $rows) {
+            SocialDemographic::where('social_account_id', $account->id)
+                ->where('metric', $metric)
+                ->where('dimension', $dimension)
+                ->delete();
+            foreach (array_chunk($rows, 500) as $chunk) {
+                SocialDemographic::insert($chunk);
+            }
+        });
+
+        return count($rows);
+    }
+
     /**
      * Conversations of a Page (Messenger) or its Instagram inbox, with recent messages.
      */
@@ -390,7 +512,7 @@ class MetaSyncService
 
     protected function syncAds(SocialAccount $account): array
     {
-        $counts = ['ads' => 0];
+        $counts = ['ads' => 0, 'ad breakdown rows' => 0];
 
         if ($account->token_expires_at && $account->token_expires_at->isPast()) {
             $this->warnings[] = 'Ad account access expired. Reconnect Facebook to renew it.';
@@ -431,7 +553,62 @@ class MetaSyncService
             }
         });
 
+        foreach (config('meta.ad_breakdowns') as $name => $breakdowns) {
+            $this->attempt($account, "ad breakdown '$name'", function () use ($account, $name, $breakdowns, &$counts) {
+                $counts['ad breakdown rows'] += $this->syncAdBreakdown($account, $name, $breakdowns);
+            });
+        }
+
         return $counts;
+    }
+
+    /**
+     * Per-ad results over the history window split by one breakdown set. Rows
+     * are read in full before the old ones are replaced, so a failed request
+     * keeps the previous data.
+     */
+    protected function syncAdBreakdown(SocialAccount $account, string $name, string $breakdowns): int
+    {
+        $dims = explode(',', $breakdowns);
+        $rows = $this->meta->paginate($account->external_id . '/insights', [
+            'level' => 'ad',
+            'fields' => 'ad_id,spend,impressions,reach,clicks',
+            'breakdowns' => $breakdowns,
+            'time_range' => json_encode(['since' => $this->since->toDateString(), 'until' => now()->toDateString()]),
+            'limit' => 500,
+        ], $account->access_token);
+
+        $now = now();
+        $records = [];
+        foreach ($rows as $row) {
+            if (empty($row['ad_id'])) {
+                continue;
+            }
+            $segment = mb_substr(collect($dims)->map(fn ($d) => $row[$d] ?? 'unknown')->join('|'), 0, 150);
+            $key = $row['ad_id'] . '|' . $segment;
+
+            $records[$key] = [
+                'social_account_id' => $account->id,
+                'ad_external_id' => $row['ad_id'],
+                'breakdown' => $name,
+                'segment' => $segment,
+                'spend' => ($records[$key]['spend'] ?? 0) + (float) ($row['spend'] ?? 0),
+                'impressions' => ($records[$key]['impressions'] ?? 0) + (int) ($row['impressions'] ?? 0),
+                'reach' => ($records[$key]['reach'] ?? 0) + (int) ($row['reach'] ?? 0),
+                'clicks' => ($records[$key]['clicks'] ?? 0) + (int) ($row['clicks'] ?? 0),
+                'created_at' => $now,
+                'updated_at' => $now,
+            ];
+        }
+
+        DB::transaction(function () use ($account, $name, $records) {
+            SocialAdBreakdown::where('social_account_id', $account->id)->where('breakdown', $name)->delete();
+            foreach (array_chunk(array_values($records), 500) as $chunk) {
+                SocialAdBreakdown::insert($chunk);
+            }
+        });
+
+        return count($records);
     }
 
     // --------------------------------------------------------------- Helpers

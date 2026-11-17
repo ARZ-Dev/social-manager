@@ -49,7 +49,9 @@ class SocialAccount extends Model
             $account->conversations()->delete();
 
             $account->insights()->delete();
+            $account->demographics()->delete();
             $account->ads()->delete();
+            $account->adBreakdowns()->delete();
         });
     }
 
@@ -81,6 +83,16 @@ class SocialAccount extends Model
     public function ads(): HasMany
     {
         return $this->hasMany(SocialAd::class);
+    }
+
+    public function demographics(): HasMany
+    {
+        return $this->hasMany(SocialDemographic::class);
+    }
+
+    public function adBreakdowns(): HasMany
+    {
+        return $this->hasMany(SocialAdBreakdown::class);
     }
 
     /**

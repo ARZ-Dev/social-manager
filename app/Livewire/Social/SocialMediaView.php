@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Social;
 
+use App\Jobs\SyncSocialAccounts;
 use App\Models\Company;
 use App\Models\Social\SocialAccount;
 use App\Models\Social\SocialAd;
@@ -10,7 +11,6 @@ use App\Models\Social\SocialConversation;
 use App\Models\Social\SocialDemographic;
 use App\Models\Social\SocialInsight;
 use App\Models\Social\SocialPost;
-use App\Services\Meta\MetaSyncService;
 use App\Support\Num;
 use Carbon\CarbonPeriod;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
@@ -31,6 +31,9 @@ class SocialMediaView extends Component
 
     public const TABS = ['overview', 'posts', 'audience', 'messages', 'ads'];
     public const PERIODS = [7, 30, 90];
+
+    /** A fetch that hasn't finished after this long is treated as dead (e.g. the server restarted). */
+    public const SYNC_STALE_MINUTES = 30;
 
     #[Url]
     public $company = '';
@@ -63,6 +66,9 @@ class SocialMediaView extends Component
     public ?int $openConversation = null;
     public ?int $breakdownAd = null;
 
+    /** A background fetch is running for this company; the page polls checkSync(). */
+    public bool $syncing = false;
+
     public function mount()
     {
         $this->authorize('social-list');
@@ -81,6 +87,7 @@ class SocialMediaView extends Component
             default => in_array($this->tab, self::TABS) ? $this->tab : 'overview',
         };
         $this->days = in_array($this->days, self::PERIODS) ? $this->days : 30;
+        $this->syncing = $this->company && $this->runningSync()->exists();
     }
 
     // ------------------------------------------------------------ Navigation
@@ -91,6 +98,7 @@ class SocialMediaView extends Component
 
         $this->company = Company::visibleTo(auth()->user())->findOrFail($id)->id;
         $this->reset('account', 'trendMetric', 'postSearch', 'chatSearch', 'companySearch', 'openPost', 'openConversation', 'breakdownAd');
+        $this->syncing = $this->runningSync()->exists();
         $this->resetPage();
     }
 
@@ -99,7 +107,7 @@ class SocialMediaView extends Component
     {
         abort_unless(auth()->user()->canAccessAllCompanies(), 403);
 
-        $this->reset('company', 'account', 'trendMetric', 'postSearch', 'chatSearch', 'openPost', 'openConversation', 'breakdownAd');
+        $this->reset('company', 'account', 'trendMetric', 'postSearch', 'chatSearch', 'openPost', 'openConversation', 'breakdownAd', 'syncing');
         $this->tab = 'overview';
         $this->resetPage();
     }
@@ -195,37 +203,66 @@ class SocialMediaView extends Component
     // --------------------------------------------------------------- Actions
 
     /**
-     * Fetch everything (last N days) for all of this company's accounts.
-     * Runs while the user waits; can take a while on large accounts.
+     * Fetch the last N days for all of this company's accounts. The work runs
+     * after this request has answered (see SyncSocialAccounts), so a long fetch
+     * can't time out in the browser; the page polls checkSync() for progress.
      */
     public function fetch()
     {
         $this->authorize('social-sync');
-        @set_time_limit(0);
 
-        $accounts = $this->accountsQuery()->with('parent')->get();
-        if ($accounts->isEmpty()) {
+        if ($this->runningSync()->exists()) {
+            $this->syncing = true;
+            $this->dispatch('swal:info', ['title' => 'Already fetching', 'text' => 'A fetch for this company is still running.']);
+            return;
+        }
+
+        $ids = $this->accountsQuery()
+            ->orderByRaw("FIELD(platform, 'facebook', 'instagram', 'ads')")
+            ->orderBy('id')
+            ->pluck('id');
+        if ($ids->isEmpty()) {
             $this->dispatch('swal:error', ['title' => 'Nothing to fetch', 'text' => 'Connect a Facebook Page first.']);
             return;
         }
 
-        $sync = app(MetaSyncService::class);
-        $totals = [];
-        $warnings = 0;
+        SocialAccount::whereKey($ids)->update(['sync_queued_at' => now()]);
+        SyncSocialAccounts::dispatchAfterResponse($ids->all());
+        $this->syncing = true;
+    }
 
-        foreach ($accounts as $acc) {
-            $result = $sync->syncAccount($acc);
-            foreach ($result['counts'] as $k => $v) {
-                $totals[$k] = ($totals[$k] ?? 0) + $v;
-            }
-            $warnings += count($result['warnings']);
+    /**
+     * Polled every few seconds while a fetch runs. Returns how many accounts are
+     * left; the page only re-renders once everything is done.
+     */
+    public function checkSync(): int
+    {
+        $left = $this->runningSync()->count();
+        if ($left > 0) {
+            $this->skipRender();
+            return $left;
         }
 
-        $summary = collect($totals)->filter()->map(fn ($v, $k) => number_format($v) . " $k")->join(', ', ' and ') ?: 'no new data';
-        $this->dispatch($warnings ? 'swal:warning' : 'swal:success', [
-            'title' => $warnings ? 'Fetched, with warnings' : 'Data updated',
-            'text' => "Fetched $summary." . ($warnings ? " Meta refused $warnings request(s). The warnings panel on the page lists them." : ''),
-        ]);
+        if ($this->syncing) {
+            $this->syncing = false;
+            $warned = $this->accountsQuery()->whereNotNull('last_sync_error')->count();
+            $this->dispatch($warned ? 'swal:warning' : 'swal:success', [
+                'title' => $warned ? 'Fetched, with warnings' : 'Data updated',
+                'text' => $warned
+                    ? "Meta refused part of the fetch on $warned " . str('account')->plural($warned) . '. The warnings panel lists what.'
+                    : 'All accounts are up to date.',
+            ]);
+        }
+
+        return 0;
+    }
+
+    /** Accounts of this company still waiting for or in the middle of a fetch. */
+    protected function runningSync()
+    {
+        return $this->accountsQuery()
+            ->whereNotNull('sync_queued_at')
+            ->where('sync_queued_at', '>', now()->subMinutes(self::SYNC_STALE_MINUTES));
     }
 
     public function disconnect($id)
@@ -315,6 +352,7 @@ class SocialMediaView extends Component
             'expiringAds' => $accounts->filter(fn ($a) => $a->platform === SocialAccount::ADS
                 && $a->token_expires_at && $a->token_expires_at->lt(now()->addDays(7)))->values(),
             'postDetail' => null,
+            'syncLeft' => $this->syncing ? $this->runningSync()->count() : 0,
         ];
 
         if ($accounts->isNotEmpty()) {

@@ -1,14 +1,32 @@
-@php $hasAlerts = !$metaConfigured || $neverFetched || $expiringAds->isNotEmpty() || $warningAccounts->isNotEmpty(); @endphp
+@php $hasAlerts = $syncing || !$metaConfigured || $neverFetched || $expiringAds->isNotEmpty() || $warningAccounts->isNotEmpty(); @endphp
 
-<div @class(['space-y-3', 'mb-6' => $hasAlerts]) wire:loading.class="mb-6" wire:target="fetch">
-    {{-- While fetching --}}
-    <div wire:loading.flex wire:target="fetch" class="alert alert-info items-center">
-        <span class="size-5 shrink-0 animate-spin rounded-full border-2 border-brand-200 border-t-brand-600 dark:border-brand-500/30 dark:border-t-brand-300"></span>
-        <div>
-            <p class="font-semibold">Fetching data from Meta…</p>
-            <p class="opacity-80">This can take a few minutes for busy accounts. Keep this page open.</p>
+<div @class(['space-y-3', 'mb-6' => $hasAlerts])>
+    {{-- Background fetch: ask the server every 3 s how many accounts are left; it re-renders when done. --}}
+    @if($syncing)
+        <div class="alert alert-info items-center" role="status" wire:key="sync-progress"
+            x-data="{
+                left: {{ $syncLeft }},
+                busy: false,
+                timer: null,
+                init() {
+                    this.timer = setInterval(async () => {
+                        if (this.busy) return;
+                        this.busy = true;
+                        try { this.left = await $wire.checkSync(); } finally { this.busy = false; }
+                    }, 3000);
+                },
+                destroy() { clearInterval(this.timer); },
+            }">
+            <span class="size-5 shrink-0 animate-spin rounded-full border-2 border-brand-200 border-t-brand-600 dark:border-brand-500/30 dark:border-t-brand-300"></span>
+            <div class="flex-1">
+                <p class="font-semibold">Fetching data from Meta…</p>
+                <p class="opacity-80">
+                    <span x-text="left">{{ $syncLeft }}</span> <span x-text="left === 1 ? 'account' : 'accounts'">{{ str('account')->plural($syncLeft) }}</span> left.
+                    It runs in the background, so you can keep working or leave this page.
+                </p>
+            </div>
         </div>
-    </div>
+    @endif
 
     @if(!$metaConfigured)
         <div class="alert alert-warning">
@@ -23,8 +41,8 @@
         </div>
     @endif
 
-    @if($neverFetched)
-        <div class="alert alert-info" wire:loading.remove wire:target="fetch">
+    @if($neverFetched && !$syncing)
+        <div class="alert alert-info">
             <x-icon name="info-circle" class="size-5 shrink-0" />
             <div class="flex-1">
                 <p class="font-semibold">Accounts linked, no data yet</p>

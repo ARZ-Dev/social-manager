@@ -57,12 +57,18 @@
         <div class="flex flex-wrap gap-2">
             @can('social-sync')
                 @if($accounts->isNotEmpty())
-                    <button type="button" wire:click="fetch" wire:loading.attr="disabled" wire:target="fetch" class="btn btn-secondary">
-                        <span wire:loading.remove wire:target="fetch"><x-icon name="refresh" class="size-4" /></span>
-                        <span wire:loading wire:target="fetch" class="size-4 animate-spin rounded-full border-2 border-slate-300 border-t-brand-600"></span>
-                        <span wire:loading.remove wire:target="fetch">Fetch data</span>
-                        <span wire:loading wire:target="fetch">Fetching…</span>
-                    </button>
+                    @if($syncing)
+                        <button type="button" class="btn btn-secondary" disabled>
+                            <span class="size-4 animate-spin rounded-full border-2 border-slate-300 border-t-brand-600"></span>
+                            Fetching…
+                        </button>
+                    @else
+                        <button type="button" wire:click="fetch" wire:loading.attr="disabled" wire:target="fetch" class="btn btn-secondary">
+                            <span wire:loading.remove wire:target="fetch"><x-icon name="refresh" class="size-4" /></span>
+                            <span wire:loading wire:target="fetch" class="size-4 animate-spin rounded-full border-2 border-slate-300 border-t-brand-600"></span>
+                            Fetch data
+                        </button>
+                    @endif
                 @endif
             @endcan
             @can('social-connect')

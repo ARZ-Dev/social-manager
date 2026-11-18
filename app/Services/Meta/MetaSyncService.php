@@ -266,27 +266,39 @@ class MetaSyncService
 
     /**
      * Lifetime metrics for one post, stored as metric => value on the post.
-     * Metrics are requested one by one so a deprecated metric doesn't sink the rest.
+     * All metrics go in one request; if Meta rejects it (one retired or
+     * unsupported metric fails the whole call), they are retried one by one so
+     * the rest still come through, and the rejected one is skipped from then on.
      */
     protected function syncPostInsights(SocialAccount $account, SocialPost $post, string $metricSet, string $token): void
     {
         $values = $post->insights ?? [];
+        $metrics = array_values(array_filter(
+            config("meta.metrics.$metricSet"),
+            fn ($m) => !in_array("$metricSet.$m", $this->badMetrics)
+        ));
+        if (!$metrics) {
+            return;
+        }
 
-        foreach (config("meta.metrics.$metricSet") as $metric) {
-            // Don't keep asking for a metric Meta already rejected during this fetch.
-            if (in_array("$metricSet.$metric", $this->badMetrics)) {
-                continue;
+        $collect = function (array $res) use (&$values) {
+            foreach ($res['data'] ?? [] as $row) {
+                $value = $row['values'][0]['value'] ?? $row['total_value']['value'] ?? null;
+                // Breakdown metrics (e.g. reactions by type) come back as arrays: sum them.
+                $values[$row['name']] = is_array($value) ? array_sum($value) : $value;
             }
-            try {
-                $res = $this->meta->get($post->external_id . '/insights', ['metric' => $metric], $token);
-                foreach ($res['data'] ?? [] as $row) {
-                    $value = $row['values'][0]['value'] ?? $row['total_value']['value'] ?? null;
-                    // Breakdown metrics (e.g. reactions by type) come back as arrays: sum them.
-                    $values[$row['name']] = is_array($value) ? array_sum($value) : $value;
+        };
+
+        try {
+            $collect($this->meta->get($post->external_id . '/insights', ['metric' => implode(',', $metrics)], $token));
+        } catch (MetaApiException) {
+            foreach ($metrics as $metric) {
+                try {
+                    $collect($this->meta->get($post->external_id . '/insights', ['metric' => $metric], $token));
+                } catch (MetaApiException $e) {
+                    $this->badMetrics[] = "$metricSet.$metric";
+                    $this->warnOnce($account, "post metric '$metric'", $e);
                 }
-            } catch (MetaApiException $e) {
-                $this->badMetrics[] = "$metricSet.$metric";
-                $this->warnOnce($account, "post metric '$metric'", $e);
             }
         }
 

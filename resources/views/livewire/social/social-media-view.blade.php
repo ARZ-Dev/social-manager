@@ -53,7 +53,7 @@
             </div>
 
             <div wire:loading.class="opacity-50 pointer-events-none" class="transition-opacity"
-                wire:target="setTab,setAccount,setDays,setTrendMetric,setAudienceMetric,setBreakdown,toggleAdBreakdown,postSort,adSort,gotoPage,nextPage,previousPage">
+                wire:target="setTab,setAccount,setPostPlatform,clearPostFilters,setDays,setTrendMetric,setAudienceMetric,setBreakdown,toggleAdBreakdown,postSort,adSort,gotoPage,nextPage,previousPage">
                 @include('livewire.social.partials.' . $tab)
             </div>
         @endif

@@ -11,7 +11,7 @@
         @foreach([
             ['Connect', 'Log in with Facebook using the company’s Meta app.', 'brand-facebook'],
             ['Choose', 'Pick the Pages and ad accounts this company should read.', 'list-check'],
-            ['Fetch', 'Load the last ' . config('meta.history_days') . ' days of data in one click.', 'refresh'],
+            ['Fetch', 'Pick the accounts and the period, and the data loads in the background.', 'refresh'],
         ] as $i => [$title, $text, $icon])
             <li class="rounded-xl border border-slate-200 p-4 dark:border-slate-800">
                 <div class="flex items-center gap-2">

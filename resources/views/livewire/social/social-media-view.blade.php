@@ -61,5 +61,9 @@
         @if($postDetail)
             @include('livewire.social.partials.post-modal')
         @endif
+
+        @if($showFetch)
+            @include('livewire.social.partials.fetch-modal')
+        @endif
     @endif
 </div>

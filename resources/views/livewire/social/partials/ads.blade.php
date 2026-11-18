@@ -45,7 +45,7 @@
                     Ad: <span class="font-medium text-slate-700 dark:text-slate-300">{{ $breakdownAdModel->name }}</span> ·
                     <button type="button" class="link" wire:click="toggleAdBreakdown({{ $breakdownAdModel->id }})">show all ads</button>
                 @else
-                    All ads, last {{ config('meta.history_days') }} days. Use <x-icon name="chart-pie" class="inline size-3.5 align-text-bottom" /> on an ad to see it alone.
+                    All ads{{ $adsSince ? ', from ' . \Illuminate\Support\Carbon::parse($adsSince)->format('j M Y') . ' to the last fetch' : '' }}. Use <x-icon name="chart-pie" class="inline size-3.5 align-text-bottom" /> on an ad to see it alone.
                 @endif
             </p>
         </div>

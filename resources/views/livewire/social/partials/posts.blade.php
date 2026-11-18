@@ -22,7 +22,7 @@
         @if(trim($postSearch) !== '')
             <x-ui.empty icon="search" title="No posts match “{{ $postSearch }}”">Try another word, or clear the search.</x-ui.empty>
         @else
-            <x-ui.empty icon="photo" title="No posts yet">Posts from the last {{ config('meta.history_days') }} days appear after you fetch data.</x-ui.empty>
+            <x-ui.empty icon="photo" title="No posts yet">Posts appear after you fetch data for the period you pick.</x-ui.empty>
         @endif
     </div>
 @else

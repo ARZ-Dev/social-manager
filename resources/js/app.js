@@ -195,6 +195,48 @@ document.addEventListener('alpine:init', () => {
         },
     }));
 
+    /**
+     * Horizontal strip that overflows: arrow buttons, faded edges, and the
+     * mouse wheel scrolls it sideways (until an end, then the page scrolls).
+     * Markup: x-data="hscroll" with a child x-ref="track" that scrolls.
+     */
+    Alpine.data('hscroll', () => ({
+        canLeft: false,
+        canRight: false,
+        init() {
+            this.$nextTick(() => this.update());
+            this.observer = new ResizeObserver(() => this.update());
+            this.observer.observe(this.$refs.track);
+        },
+        destroy() {
+            this.observer?.disconnect();
+        },
+        update() {
+            const t = this.$refs.track;
+            this.canLeft = t.scrollLeft > 2;
+            this.canRight = t.scrollLeft + t.clientWidth < t.scrollWidth - 2;
+        },
+        by(direction) {
+            const t = this.$refs.track;
+            const max = t.scrollWidth - t.clientWidth;
+            const target = Math.max(0, Math.min(max, t.scrollLeft + direction * t.clientWidth * 0.75));
+            const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+            t.scrollTo({ left: target, behavior: reduce ? 'auto' : 'smooth' });
+            // Some browsers skip smooth scrolling (e.g. background tabs): make sure we get there.
+            setTimeout(() => {
+                if (Math.abs(t.scrollLeft - target) > 4) t.scrollLeft = target;
+                this.update();
+            }, 450);
+        },
+        wheel(e) {
+            if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return; // trackpads already scroll sideways
+            if ((e.deltaY > 0 && !this.canRight) || (e.deltaY < 0 && !this.canLeft)) return;
+            e.preventDefault();
+            this.$refs.track.scrollLeft += e.deltaY;
+            this.update();
+        },
+    }));
+
     /** Daily trend chart (Social Media overview). */
     Alpine.data('trendChart', (cfg) => ({
         chart: null,

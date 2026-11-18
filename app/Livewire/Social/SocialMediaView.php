@@ -14,8 +14,10 @@ use App\Models\Social\SocialPost;
 use App\Support\Num;
 use Carbon\CarbonPeriod;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 use Livewire\Attributes\Url;
 use Livewire\Component;
 use Livewire\WithPagination;
@@ -32,8 +34,8 @@ class SocialMediaView extends Component
     public const TABS = ['overview', 'posts', 'audience', 'messages', 'ads'];
     public const PERIODS = [7, 30, 90];
 
-    /** A fetch that hasn't finished after this long is treated as dead (e.g. the server restarted). */
-    public const SYNC_STALE_MINUTES = 30;
+    /** A fetch with no sign of life for this long is treated as dead (e.g. the server restarted). */
+    public const SYNC_STALE_MINUTES = 10;
 
     #[Url]
     public $company = '';
@@ -68,6 +70,12 @@ class SocialMediaView extends Component
 
     /** A background fetch is running for this company; the page polls checkSync(). */
     public bool $syncing = false;
+
+    // Fetch dialog: which accounts and which period.
+    public bool $showFetch = false;
+    public array $fetchAccounts = [];
+    public string $fetchPeriod = '90';
+    public string $fetchFrom = '';
 
     public function mount()
     {
@@ -202,33 +210,114 @@ class SocialMediaView extends Component
 
     // --------------------------------------------------------------- Actions
 
-    /**
-     * Fetch the last N days for all of this company's accounts. The work runs
-     * after this request has answered (see SyncSocialAccounts), so a long fetch
-     * can't time out in the browser; the page polls checkSync() for progress.
-     */
-    public function fetch()
+    /** Open the Fetch dialog with every account ticked and the default period. */
+    public function openFetch()
     {
         $this->authorize('social-sync');
 
         if ($this->runningSync()->exists()) {
             $this->syncing = true;
-            $this->dispatch('swal:info', ['title' => 'Already fetching', 'text' => 'A fetch for this company is still running.']);
+            $this->dispatch('swal:info', ['title' => 'Already fetching', 'text' => 'Stop the running fetch first, or wait for it to finish.']);
             return;
         }
 
-        $ids = $this->accountsQuery()
-            ->orderByRaw("FIELD(platform, 'facebook', 'instagram', 'ads')")
-            ->orderBy('id')
-            ->pluck('id');
+        $ids = $this->orderedAccountIds();
         if ($ids->isEmpty()) {
             $this->dispatch('swal:error', ['title' => 'Nothing to fetch', 'text' => 'Connect a Facebook Page first.']);
             return;
         }
 
-        SocialAccount::whereKey($ids)->update(['sync_queued_at' => now()]);
-        SyncSocialAccounts::dispatchAfterResponse($ids->all());
+        $this->fetchAccounts = $ids->map(fn ($id) => (string) $id)->all();
+        $default = (string) config('meta.history_days');
+        $this->fetchPeriod = array_key_exists($default, SocialAccount::FETCH_PERIODS) ? $default : '90';
+        $this->fetchFrom = now()->subDays(30)->toDateString();
+        $this->resetValidation();
+        $this->showFetch = true;
+    }
+
+    public function closeFetch()
+    {
+        $this->showFetch = false;
+    }
+
+    /**
+     * Tick every account (of one platform, or all), or untick them if they all are.
+     */
+    public function toggleFetchGroup(?string $platform = null)
+    {
+        $group = $this->accountsQuery()
+            ->when($platform, fn ($q) => $q->where('platform', $platform))
+            ->pluck('id')
+            ->map(fn ($id) => (string) $id)
+            ->all();
+
+        $allOn = count(array_intersect($group, $this->fetchAccounts)) === count($group);
+        $this->fetchAccounts = $allOn
+            ? array_values(array_diff($this->fetchAccounts, $group))
+            : array_values(array_unique(array_merge($this->fetchAccounts, $group)));
+    }
+
+    /**
+     * Start fetching the ticked accounts for the chosen period. The work runs
+     * after this request has answered (see SyncSocialAccounts), so a long fetch
+     * can't time out in the browser; the page polls checkSync() for progress.
+     */
+    public function startFetch()
+    {
+        $this->authorize('social-sync');
+
+        $all = $this->orderedAccountIds();
+        $this->validate([
+            'fetchAccounts' => ['required', 'array', 'min:1'],
+            'fetchAccounts.*' => [Rule::in($all->map(fn ($id) => (string) $id)->all())],
+            'fetchPeriod' => ['required', Rule::in(array_keys(SocialAccount::FETCH_PERIODS))],
+            'fetchFrom' => ['exclude_unless:fetchPeriod,custom', 'required', 'date', 'before_or_equal:today',
+                'after_or_equal:' . now()->subDays(SocialAccount::FETCH_MAX_DAYS)->toDateString()],
+        ], [
+            'fetchAccounts.required' => 'Pick at least one account.',
+            'fetchAccounts.min' => 'Pick at least one account.',
+            'fetchFrom.after_or_equal' => 'Meta keeps about 2 years of data: pick a date after :date.',
+        ], ['fetchFrom' => 'start date']);
+
+        if ($this->runningSync()->exists()) {
+            $this->showFetch = false;
+            $this->syncing = true;
+            return;
+        }
+
+        $since = $this->fetchPeriod === 'custom'
+            ? Carbon::parse($this->fetchFrom)->startOfDay()
+            : now()->subDays((int) $this->fetchPeriod)->startOfDay();
+        // Keep Pages before their Instagram accounts and ad accounts.
+        $ids = $all->filter(fn ($id) => in_array((string) $id, $this->fetchAccounts, true))->values();
+        $runId = (string) Str::uuid();
+
+        SocialAccount::whereKey($ids)->update(['sync_queued_at' => now(), 'sync_run_id' => $runId]);
+        SyncSocialAccounts::dispatchAfterResponse($ids->all(), $runId, $since->toDateString());
+
+        $this->showFetch = false;
         $this->syncing = true;
+    }
+
+    /** Stop the running fetch. What was saved so far is kept. */
+    public function stopFetch()
+    {
+        $this->authorize('social-sync');
+
+        $this->runningSync()->update(['sync_queued_at' => null, 'sync_run_id' => null]);
+        $this->syncing = false;
+        $this->dispatch('swal:info', [
+            'title' => 'Fetch stopped',
+            'text' => 'Data fetched so far is kept. The account in progress stops after its current step.',
+        ]);
+    }
+
+    protected function orderedAccountIds(): Collection
+    {
+        return $this->accountsQuery()
+            ->orderByRaw("FIELD(platform, 'facebook', 'instagram', 'ads')")
+            ->orderBy('id')
+            ->pluck('id');
     }
 
     /**
@@ -383,8 +472,12 @@ class SocialMediaView extends Component
         $today = now()->startOfDay();
         $since = $today->copy()->subDays($this->days - 1);
         $prevSince = $since->copy()->subDays($this->days);
-        // The previous period only counts if it is inside the fetched history.
-        $comparable = $this->days * 2 <= config('meta.history_days');
+        // Compare with the previous period only if every account's data reaches back that far.
+        $comparable = $socialAccounts->isNotEmpty() && $socialAccounts->every(function ($a) use ($prevSince) {
+            $from = $a->meta['fetched_from']
+                ?? $a->last_synced_at?->copy()->subDays(config('meta.history_days'))->toDateString();
+            return $from && Carbon::parse($from)->lte($prevSince);
+        });
 
         $insights = SocialInsight::whereIn('social_account_id', $ids)
             ->where('date', '>=', $prevSince->toDateString())
@@ -614,7 +707,8 @@ class SocialMediaView extends Component
 
     protected function adsData(Collection $adIds): array
     {
-        $currencies = SocialAccount::whereIn('id', $adIds)->get()->pluck('meta.currency')->filter()->unique();
+        $adAccounts = SocialAccount::whereIn('id', $adIds)->get();
+        $currencies = $adAccounts->pluck('meta.currency')->filter()->unique();
 
         $ads = SocialAd::with('account')->whereIn('social_account_id', $adIds);
         match ($this->adSort) {
@@ -641,6 +735,8 @@ class SocialMediaView extends Component
                 ->selectRaw("SUM(spend) as spend, SUM(impressions) as impressions, SUM(reach) as reach, SUM(clicks) as clicks, COUNT(*) as total, SUM(effective_status = 'ACTIVE') as active")
                 ->first(),
             'currency' => $currencies->count() === 1 ? $currencies->first() : null,
+            // Ad figures cover the period of the last fetch.
+            'adsSince' => $adAccounts->pluck('meta.last_fetch_since')->filter()->min(),
             'mixedCurrency' => $currencies->count() > 1,
             'breakdownAdModel' => $breakdownAd,
             'breakdownRows' => $rows->limit(50)->get(),

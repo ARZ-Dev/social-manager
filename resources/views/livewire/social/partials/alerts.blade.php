@@ -25,6 +25,11 @@
                     It runs in the background, so you can keep working or leave this page.
                 </p>
             </div>
+            @can('social-sync')
+                <button type="button" wire:click="stopFetch" wire:loading.attr="disabled" wire:target="stopFetch" class="btn btn-secondary btn-sm self-center">
+                    <x-icon name="player-stop" class="size-4" /> Stop
+                </button>
+            @endcan
         </div>
     @endif
 
@@ -46,10 +51,10 @@
             <x-icon name="info-circle" class="size-5 shrink-0" />
             <div class="flex-1">
                 <p class="font-semibold">Accounts linked, no data yet</p>
-                <p class="mt-0.5 opacity-90">Fetch to load the last {{ config('meta.history_days') }} days of posts, insights, audience, messages and ads.</p>
+                <p class="mt-0.5 opacity-90">Pick the accounts and the period to load posts, insights, audience, messages and ads.</p>
             </div>
             @can('social-sync')
-                <button type="button" wire:click="fetch" class="btn btn-primary btn-sm self-center">Fetch now</button>
+                <button type="button" wire:click="openFetch" class="btn btn-primary btn-sm self-center">Fetch now</button>
             @endcan
         </div>
     @endif

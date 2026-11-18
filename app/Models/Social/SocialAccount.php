@@ -21,6 +21,12 @@ class SocialAccount extends Model
 
     protected $hidden = ['access_token'];
 
+    /** Periods offered in the Fetch dialog: value => label (days, or 'custom'). */
+    public const FETCH_PERIODS = ['7' => '7 days', '30' => '30 days', '90' => '90 days', '180' => '6 months', '365' => '1 year', 'custom' => 'Custom'];
+
+    /** How far back a custom fetch may start (Meta keeps about 2 years of insights). */
+    public const FETCH_MAX_DAYS = 730;
+
     protected function casts(): array
     {
         return [

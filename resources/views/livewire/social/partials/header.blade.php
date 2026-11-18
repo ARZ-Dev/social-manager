@@ -58,15 +58,13 @@
             @can('social-sync')
                 @if($accounts->isNotEmpty())
                     @if($syncing)
-                        <button type="button" class="btn btn-secondary" disabled>
-                            <span class="size-4 animate-spin rounded-full border-2 border-slate-300 border-t-brand-600"></span>
-                            Fetching…
+                        <button type="button" wire:click="stopFetch" wire:loading.attr="disabled" wire:target="stopFetch"
+                            class="btn btn-secondary text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300">
+                            <x-icon name="player-stop" class="size-4" /> Stop fetching
                         </button>
                     @else
-                        <button type="button" wire:click="fetch" wire:loading.attr="disabled" wire:target="fetch" class="btn btn-secondary">
-                            <span wire:loading.remove wire:target="fetch"><x-icon name="refresh" class="size-4" /></span>
-                            <span wire:loading wire:target="fetch" class="size-4 animate-spin rounded-full border-2 border-slate-300 border-t-brand-600"></span>
-                            Fetch data
+                        <button type="button" wire:click="openFetch" wire:loading.attr="disabled" wire:target="openFetch" class="btn btn-secondary">
+                            <x-icon name="refresh" class="size-4" /> Fetch data
                         </button>
                     @endif
                 @endif
@@ -86,7 +84,21 @@
     </div>
 
     @if($accounts->isNotEmpty())
-        <div class="flex gap-2 overflow-x-auto border-t border-slate-200 px-5 py-3 scrollbar-none dark:border-slate-800" role="group" aria-label="Show data for">
+        {{-- Account strip: arrows, faded edges and mouse-wheel scrolling when it overflows --}}
+        <div x-data="hscroll" class="relative border-t border-slate-200 dark:border-slate-800">
+            <div x-show="canLeft" x-cloak class="pointer-events-none absolute inset-y-0 left-0 z-10 w-16 rounded-bl-xl bg-gradient-to-r from-white via-white/80 to-transparent dark:from-slate-900 dark:via-slate-900/80"></div>
+            <div x-show="canRight" x-cloak class="pointer-events-none absolute inset-y-0 right-0 z-10 w-16 rounded-br-xl bg-gradient-to-l from-white via-white/80 to-transparent dark:from-slate-900 dark:via-slate-900/80"></div>
+            <button type="button" x-show="canLeft" x-cloak x-on:click="by(-1)" aria-label="Scroll accounts left"
+                class="absolute left-2 top-1/2 z-20 flex size-8 -translate-y-1/2 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 shadow-sm hover:bg-slate-50 hover:text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 dark:hover:text-white">
+                <x-icon name="chevron-left" class="size-4" />
+            </button>
+            <button type="button" x-show="canRight" x-cloak x-on:click="by(1)" aria-label="Scroll accounts right"
+                class="absolute right-2 top-1/2 z-20 flex size-8 -translate-y-1/2 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 shadow-sm hover:bg-slate-50 hover:text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 dark:hover:text-white">
+                <x-icon name="chevron-right" class="size-4" />
+            </button>
+
+        <div x-ref="track" x-on:scroll.passive="update()" x-on:wheel="wheel($event)"
+            class="flex gap-2 overflow-x-auto px-5 py-3 scrollbar-none" role="group" aria-label="Show data for">
             <button type="button" wire:click="setAccount('')" aria-pressed="{{ $account ? 'false' : 'true' }}"
                 @class([
                     'flex shrink-0 items-center gap-2 rounded-full border py-1 pl-1 pr-3 text-sm font-medium transition-colors',
@@ -97,7 +109,24 @@
                 All accounts
             </button>
 
+            @php
+                $prevPlatform = null;
+                $platformCounts = $accounts->countBy('platform');
+                $groupNames = ['facebook' => 'Facebook', 'instagram' => 'Instagram', 'ads' => 'Ads'];
+            @endphp
             @foreach($accounts as $acc)
+                {{-- Group label before the first account of each platform --}}
+                @if($acc->platform !== $prevPlatform)
+                    <span wire:key="group-{{ $acc->platform }}" @class([
+                        'flex shrink-0 items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500',
+                        'ml-2 border-l border-slate-200 pl-4 dark:border-slate-700' => $prevPlatform !== null,
+                        'ml-2' => $prevPlatform === null,
+                    ])>
+                        <x-icon :name="$platforms[$acc->platform]['icon']" class="size-3.5" />
+                        {{ $groupNames[$acc->platform] }} · {{ $platformCounts[$acc->platform] }}
+                    </span>
+                    @php $prevPlatform = $acc->platform; @endphp
+                @endif
                 @php $active = (int) $account === $acc->id; @endphp
                 <div wire:key="chip-{{ $acc->id }}" @class([
                     'flex shrink-0 items-center rounded-full border pr-1 transition-colors',
@@ -138,6 +167,7 @@
                     @endcan
                 </div>
             @endforeach
+        </div>
         </div>
     @endif
 </div>

@@ -30,13 +30,21 @@ class MetaSyncService
 
     protected MetaClient $meta;
 
+    /** Returns true when the fetch should stop (Stop pressed or a newer fetch took over). */
+    protected ?\Closure $shouldStop = null;
+
     /**
+     * Fetch one account from $since (default: META_HISTORY_DAYS ago) until today.
+     * $shouldStop is checked between steps; when it returns true a SyncStopped
+     * exception ends the fetch, keeping what was saved so far.
+     *
      * @return array{counts: array<string,int>, warnings: string[]}
      */
-    public function syncAccount(SocialAccount $account): array
+    public function syncAccount(SocialAccount $account, ?CarbonInterface $since = null, ?callable $shouldStop = null): array
     {
         $this->warnings = [];
         $this->badMetrics = [];
+        $this->shouldStop = $shouldStop ? \Closure::fromCallable($shouldStop) : null;
 
         // Calls go through the owning company's own Meta app.
         try {
@@ -46,7 +54,9 @@ class MetaSyncService
             return ['counts' => [], 'warnings' => [$e->getMessage()]];
         }
 
-        $this->since = now()->subDays(config('meta.history_days'))->startOfDay();
+        $this->since = $since
+            ? Carbon::instance($since)->startOfDay()
+            : now()->subDays(config('meta.history_days'))->startOfDay();
         $counts = [];
 
         match ($account->platform) {
@@ -55,9 +65,17 @@ class MetaSyncService
             SocialAccount::ADS => $counts = $this->syncAds($account),
         };
 
+        // Remember which period the stored data covers: the Overview uses it to
+        // know when a comparison with the previous period is meaningful.
+        $meta = $account->fresh()->meta ?? [];
+        $from = isset($meta['fetched_from']) ? Carbon::parse($meta['fetched_from'])->min($this->since) : $this->since;
         $account->update([
             'last_synced_at' => now(),
             'last_sync_error' => $this->warnings ? implode("\n", array_slice($this->warnings, 0, 10)) : null,
+            'meta' => array_merge($meta, [
+                'fetched_from' => $from->toDateString(),
+                'last_fetch_since' => $this->since->toDateString(),
+            ]),
         ]);
 
         return ['counts' => $counts, 'warnings' => $this->warnings];
@@ -91,6 +109,7 @@ class MetaSyncService
             ], $token);
 
             foreach ($posts as $item) {
+                $this->checkStop();
                 $post = SocialPost::updateOrCreate(
                     ['social_account_id' => $account->id, 'external_id' => $item['id']],
                     [
@@ -187,6 +206,7 @@ class MetaSyncService
             ], $token);
 
             foreach ($media as $item) {
+                $this->checkStop();
                 $post = SocialPost::updateOrCreate(
                     ['social_account_id' => $account->id, 'external_id' => $item['id']],
                     [
@@ -317,6 +337,7 @@ class MetaSyncService
             $from = $this->since->copy();
             try {
                 while ($from->lt($end)) {
+                    $this->checkStop();
                     $to = $from->copy()->addDays($maxDays)->min($end);
                     $res = $this->meta->get($account->external_id . '/insights', [
                         'metric' => $metric,
@@ -362,6 +383,7 @@ class MetaSyncService
         $n = 0;
 
         foreach (config('meta.demographics.facebook_page') as $metric => $dimension) {
+            $this->checkStop();
             try {
                 $res = $this->meta->get($account->external_id . '/insights', ['metric' => $metric], $token);
                 $n += $this->storeDemographics($account, $metric, $dimension, $this->segments($res, $dimension));
@@ -384,6 +406,7 @@ class MetaSyncService
 
         foreach ($cfg['metrics'] as $metric) {
             foreach ($cfg['breakdowns'] as $dimension) {
+                $this->checkStop();
                 try {
                     $res = $this->meta->get($account->external_id . '/insights', [
                         'metric' => $metric,
@@ -484,6 +507,7 @@ class MetaSyncService
         $n = 0;
 
         foreach ($this->meta->paginate($pageId . '/conversations', $params, $token) as $conv) {
+            $this->checkStop();
             $updated = isset($conv['updated_time']) ? Carbon::parse($conv['updated_time']) : null;
             if ($updated && $updated->lt($this->since)) {
                 break; // newest first; the rest are older than the window
@@ -544,6 +568,7 @@ class MetaSyncService
             ], $account->access_token);
 
             foreach ($ads as $ad) {
+                $this->checkStop();
                 $stats = $ad['insights']['data'][0] ?? [];
                 SocialAd::updateOrCreate(
                     ['social_account_id' => $account->id, 'external_id' => $ad['id']],
@@ -627,10 +652,19 @@ class MetaSyncService
 
     protected function attempt(SocialAccount $account, string $what, callable $fn): void
     {
+        $this->checkStop();
         try {
             $fn();
         } catch (MetaApiException $e) {
             $this->warnings[] = ucfirst($what) . ': ' . $e->getMessage();
+        }
+    }
+
+    /** @throws SyncStopped */
+    protected function checkStop(): void
+    {
+        if ($this->shouldStop && ($this->shouldStop)()) {
+            throw new SyncStopped('The fetch was stopped.');
         }
     }
 

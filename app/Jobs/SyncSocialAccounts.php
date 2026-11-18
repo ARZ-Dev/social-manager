@@ -15,15 +15,18 @@ use Illuminate\Support\Carbon;
  * its answer (no queue worker needed) and a long fetch can't hit the web
  * server's timeout.
  *
- * Every account carries the run's id in sync_run_id while it waits or is being
- * fetched. Pressing Stop clears it (and a newer fetch replaces it); the job
- * checks between steps, stops that account and skips the ones not yet started.
- * sync_queued_at doubles as a heartbeat while the run is alive and is cleared
- * as each account finishes, which the page polls.
+ * Each account of the run carries the run's id (sync_run_id) and a state
+ * (sync_state): queued → running → done / failed / stopped. The page lists
+ * the accounts of the run with their state. Pressing Stop marks the waiting and
+ * running accounts "stopped"; a newer fetch replaces the run id. The job checks
+ * between steps, stops that account and skips the ones not yet started.
+ * sync_queued_at is a heartbeat while waiting/running and is cleared at the end.
  */
 class SyncSocialAccounts
 {
     use Dispatchable;
+
+    public const ACTIVE = ['queued', 'running'];
 
     /** @param int[] $accountIds */
     public function __construct(
@@ -42,15 +45,18 @@ class SyncSocialAccounts
         $lastBeat = 0;
 
         foreach ($this->accountIds as $id) {
-            $stillOurs = function () use ($id, &$lastBeat) {
+            $ours = fn () => SocialAccount::whereKey($id)->where('sync_run_id', $this->runId)->whereIn('sync_state', self::ACTIVE);
+            $stillOurs = function () use ($ours, &$lastBeat) {
                 // Heartbeat about once a minute, so a long fetch isn't mistaken for a dead one.
                 if (time() - $lastBeat >= 60) {
-                    SocialAccount::where('sync_run_id', $this->runId)->update(['sync_queued_at' => now()]);
+                    SocialAccount::where('sync_run_id', $this->runId)->whereIn('sync_state', self::ACTIVE)
+                        ->update(['sync_queued_at' => now()]);
                     $lastBeat = time();
                 }
 
-                return SocialAccount::whereKey($id)->where('sync_run_id', $this->runId)->exists();
+                return $ours()->exists();
             };
+
             if (!$stillOurs()) {
                 continue; // stopped, or a newer fetch took it over
             }
@@ -60,16 +66,25 @@ class SyncSocialAccounts
                 continue;
             }
 
+            $ours()->update(['sync_state' => 'running']);
+            $outcome = 'done';
+
             try {
-                $sync->syncAccount($account, $since, fn () => !$stillOurs());
+                $result = $sync->syncAccount($account, $since, fn () => !$stillOurs());
+                // What this fetch brought in, for the progress list.
+                $fresh = $account->fresh();
+                $fresh->update(['meta' => array_merge($fresh->meta ?? [], ['last_fetch_counts' => array_filter($result['counts'])])]);
             } catch (SyncStopped) {
+                $outcome = 'stopped';
                 $account->update(['last_sync_error' => 'The last fetch was stopped before it finished, so some data may be missing.']);
             } catch (\Throwable $e) {
+                $outcome = 'failed';
                 report($e);
                 $account->update(['last_sync_error' => 'The fetch stopped: ' . $e->getMessage()]);
             } finally {
+                // Only if the run still owns the account (a newer fetch may have taken over).
                 SocialAccount::whereKey($id)->where('sync_run_id', $this->runId)
-                    ->update(['sync_queued_at' => null, 'sync_run_id' => null]);
+                    ->update(['sync_queued_at' => null, 'sync_state' => $outcome]);
             }
         }
     }

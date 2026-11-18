@@ -321,7 +321,7 @@ class SocialMediaView extends Component
         $ids = $all->filter(fn ($id) => in_array((string) $id, $this->fetchAccounts, true))->values();
         $runId = (string) Str::uuid();
 
-        SocialAccount::whereKey($ids)->update(['sync_queued_at' => now(), 'sync_run_id' => $runId]);
+        SocialAccount::whereKey($ids)->update(['sync_queued_at' => now(), 'sync_run_id' => $runId, 'sync_state' => 'queued']);
         SyncSocialAccounts::dispatchAfterResponse($ids->all(), $runId, $since->toDateString());
 
         $this->showFetch = false;
@@ -333,7 +333,8 @@ class SocialMediaView extends Component
     {
         $this->authorize('social-sync');
 
-        $this->runningSync()->update(['sync_queued_at' => null, 'sync_run_id' => null]);
+        // The run id stays so the accounts keep showing in the run's list; the job sees "stopped".
+        $this->runningSync()->update(['sync_queued_at' => null, 'sync_state' => 'stopped']);
         $this->syncing = false;
         $this->dispatch('swal:info', [
             'title' => 'Fetch stopped',
@@ -351,14 +352,17 @@ class SocialMediaView extends Component
 
     /**
      * Polled every few seconds while a fetch runs. Returns how many accounts are
-     * left; the page only re-renders once everything is done.
+     * left and each account's state; the page only re-renders once all are done.
+     *
+     * @return array{left: int, states: array<int, array{state: string, note: string, warn: bool}>}
      */
-    public function checkSync(): int
+    public function checkSync(): array
     {
+        $runId = $this->currentRunId();
         $left = $this->runningSync()->count();
         if ($left > 0) {
             $this->skipRender();
-            return $left;
+            return ['left' => $left, 'states' => $this->runStates($runId)];
         }
 
         if ($this->syncing) {
@@ -372,7 +376,54 @@ class SocialMediaView extends Component
             ]);
         }
 
-        return 0;
+        return ['left' => 0, 'states' => []];
+    }
+
+    /** The run the company's waiting/running accounts belong to. */
+    protected function currentRunId(): ?string
+    {
+        return $this->runningSync()->value('sync_run_id');
+    }
+
+    /** Accounts of a fetch run, in the order they are fetched. */
+    protected function runAccounts(?string $runId): Collection
+    {
+        if (!$runId) {
+            return collect();
+        }
+
+        return $this->accountsQuery()
+            ->where('sync_run_id', $runId)
+            ->orderByRaw("FIELD(platform, 'facebook', 'instagram', 'ads')")
+            ->orderBy('id')
+            ->get();
+    }
+
+    /**
+     * State of every account of a run for the progress list, e.g.
+     * [12 => ['state' => 'done', 'note' => '24 posts · 130 comments', 'warn' => false]].
+     */
+    protected function runStates(?string $runId): array
+    {
+        return $this->runAccounts($runId)->mapWithKeys(fn ($a) => [$a->id => [
+            'state' => $a->sync_state ?? 'queued',
+            'note' => $this->runNote($a),
+            'warn' => $a->sync_state === 'done' && filled($a->last_sync_error),
+        ]])->all();
+    }
+
+    protected function runNote(SocialAccount $a): string
+    {
+        return match ($a->sync_state) {
+            'done' => collect(['posts', 'comments', 'conversations', 'ads'])
+                ->filter(fn ($k) => ($a->meta['last_fetch_counts'][$k] ?? 0) > 0)
+                ->map(fn ($k) => number_format($a->meta['last_fetch_counts'][$k]) . ' ' . ($a->meta['last_fetch_counts'][$k] == 1 ? Str::singular($k) : $k))
+                ->join(' · ') ?: 'Up to date',
+            'failed' => Str::limit(Str::after((string) $a->last_sync_error, 'The fetch stopped: '), 80),
+            'stopped' => 'Stopped before it finished',
+            // Waiting or in progress: say what kind of account it is.
+            default => ['facebook' => 'Facebook Page', 'instagram' => 'Instagram account', 'ads' => 'Ad account'][$a->platform] ?? '',
+        };
     }
 
     /** Accounts of this company still waiting for or in the middle of a fetch. */
@@ -471,6 +522,8 @@ class SocialMediaView extends Component
                 && $a->token_expires_at && $a->token_expires_at->lt(now()->addDays(7)))->values(),
             'postDetail' => null,
             'syncLeft' => $this->syncing ? $this->runningSync()->count() : 0,
+            'syncRun' => $this->syncing ? $this->runAccounts($runId = $this->currentRunId()) : collect(),
+            'syncStates' => $this->syncing ? $this->runStates($runId ?? null) : [],
         ];
 
         if ($accounts->isNotEmpty()) {

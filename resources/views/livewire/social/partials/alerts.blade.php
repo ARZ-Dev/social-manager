@@ -1,35 +1,107 @@
 @php $hasAlerts = $syncing || !$metaConfigured || $neverFetched || $expiringAds->isNotEmpty() || $warningAccounts->isNotEmpty(); @endphp
 
 <div @class(['space-y-3', 'mb-6' => $hasAlerts])>
-    {{-- Background fetch: ask the server every 3 s how many accounts are left; it re-renders when done. --}}
+    {{-- Background fetch: every 5 s ask the server for each account's state; it re-renders when all are done.
+         A check that fails or hangs is skipped (see resources/js/app.js) and the next one tries again. --}}
     @if($syncing)
-        <div class="alert alert-info items-center" role="status" wire:key="sync-progress"
+        @php $finishedNow = collect($syncStates)->whereIn('state', ['done', 'failed', 'stopped'])->count(); @endphp
+        <div class="overflow-hidden rounded-xl border border-brand-200 bg-brand-50 dark:border-brand-500/20 dark:bg-brand-500/10"
+            role="status" wire:key="sync-progress"
+            x-on:sync-check-failed.window="busy = false"
             x-data="{
                 left: {{ $syncLeft }},
+                states: @js((object) $syncStates),
+                open: true,
                 busy: false,
                 timer: null,
+                get total() { return Object.keys(this.states).length },
+                get finished() { return Object.values(this.states).filter((s) => ['done', 'failed', 'stopped'].includes(s.state)).length },
+                state(id) { return this.states[id]?.state ?? 'queued' },
+                note(id) { return this.states[id]?.note ?? '' },
+                warn(id) { return !!this.states[id]?.warn },
                 init() {
                     this.timer = setInterval(async () => {
                         if (this.busy) return;
                         this.busy = true;
-                        try { this.left = await $wire.checkSync(); } finally { this.busy = false; }
-                    }, 3000);
+                        try {
+                            const res = await Promise.race([
+                                $wire.checkSync(),
+                                new Promise((resolve) => setTimeout(() => resolve(null), 20000)),
+                            ]);
+                            if (res && Number.isInteger(res.left)) {
+                                this.left = res.left;
+                                if (res.states && Object.keys(res.states).length) this.states = res.states;
+                            }
+                        } catch (e) {
+                            // Network hiccup: try again on the next tick.
+                        } finally {
+                            this.busy = false;
+                        }
+                    }, 5000);
                 },
                 destroy() { clearInterval(this.timer); },
             }">
-            <span class="size-5 shrink-0 animate-spin rounded-full border-2 border-brand-200 border-t-brand-600 dark:border-brand-500/30 dark:border-t-brand-300"></span>
-            <div class="flex-1">
-                <p class="font-semibold">Fetching data from Meta…</p>
-                <p class="opacity-80">
-                    <span x-text="left">{{ $syncLeft }}</span> <span x-text="left === 1 ? 'account' : 'accounts'">{{ str('account')->plural($syncLeft) }}</span> left.
-                    It runs in the background, so you can keep working or leave this page.
-                </p>
+            <div class="flex flex-wrap items-center gap-3 p-4 text-sm text-brand-900 dark:text-brand-100">
+                <span class="size-5 shrink-0 animate-spin rounded-full border-2 border-brand-200 border-t-brand-600 dark:border-brand-500/30 dark:border-t-brand-300"></span>
+                <div class="min-w-[12rem] flex-1">
+                    <p class="font-semibold">
+                        Fetching data from Meta…
+                        <span class="font-normal opacity-80"><span x-text="finished">{{ $finishedNow }}</span> of <span x-text="total">{{ count($syncStates) }}</span> done</span>
+                    </p>
+                    <div class="mt-2 h-1.5 overflow-hidden rounded-full bg-brand-100 dark:bg-brand-500/20" aria-hidden="true">
+                        <div class="h-full rounded-full bg-brand-500 transition-[width] duration-500"
+                            style="width: {{ count($syncStates) ? round($finishedNow / count($syncStates) * 100) : 0 }}%"
+                            :style="`width: ${total ? Math.round(finished / total * 100) : 0}%`"></div>
+                    </div>
+                    <p class="mt-1.5 text-xs opacity-80">It runs in the background, so you can keep working or leave this page.</p>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button type="button" class="btn btn-ghost btn-sm text-brand-800 hover:bg-brand-100 dark:text-brand-200 dark:hover:bg-brand-500/10"
+                        x-on:click="open = !open" :aria-expanded="open" aria-controls="sync-run-list">
+                        <span x-text="open ? 'Hide accounts' : 'Show accounts'">Hide accounts</span>
+                        <x-icon name="chevron-down" class="size-4 transition-transform" ::class="open && 'rotate-180'" />
+                    </button>
+                    @can('social-sync')
+                        <button type="button" wire:click="stopFetch" wire:loading.attr="disabled" wire:target="stopFetch" class="btn btn-secondary btn-sm">
+                            <x-icon name="player-stop" class="size-4" /> Stop
+                        </button>
+                    @endcan
+                </div>
             </div>
-            @can('social-sync')
-                <button type="button" wire:click="stopFetch" wire:loading.attr="disabled" wire:target="stopFetch" class="btn btn-secondary btn-sm self-center">
-                    <x-icon name="player-stop" class="size-4" /> Stop
-                </button>
-            @endcan
+
+            {{-- One row per account of the run, in fetch order --}}
+            <ul id="sync-run-list" x-show="open" class="max-h-80 divide-y divide-brand-100 overflow-y-auto border-t border-brand-200 bg-white scrollbar-thin dark:divide-slate-800 dark:border-brand-500/20 dark:bg-slate-900">
+                @foreach($syncRun as $acc)
+                    @php $initial = $syncStates[$acc->id] ?? ['state' => 'queued', 'note' => '', 'warn' => false]; @endphp
+                    <li class="flex items-center gap-3 px-4 py-2.5" wire:key="run-{{ $acc->id }}">
+                        @include('livewire.social.partials.avatar', ['acc' => $acc, 'size' => 'sm'])
+                        <div class="min-w-0 flex-1">
+                            <p class="truncate text-sm font-medium text-slate-900 dark:text-white">{{ $acc->display_name }}</p>
+                            <p class="truncate text-xs text-slate-500 dark:text-slate-400" x-text="note({{ $acc->id }})">{{ $initial['note'] }}</p>
+                        </div>
+                        <span class="shrink-0">
+                            <span x-show="state({{ $acc->id }}) === 'done' && !warn({{ $acc->id }})" @if($initial['state'] !== 'done' || $initial['warn']) x-cloak @endif class="badge badge-green">
+                                <x-icon name="circle-check" class="size-3.5" /> Done
+                            </span>
+                            <span x-show="state({{ $acc->id }}) === 'done' && warn({{ $acc->id }})" @if($initial['state'] !== 'done' || !$initial['warn']) x-cloak @endif class="badge badge-yellow" title="Meta refused part of it: see the warnings panel after the fetch">
+                                <x-icon name="alert-triangle" class="size-3.5" /> Done, with warnings
+                            </span>
+                            <span x-show="state({{ $acc->id }}) === 'running'" @if($initial['state'] !== 'running') x-cloak @endif class="badge badge-blue">
+                                <span class="size-3 animate-spin rounded-full border-2 border-brand-200 border-t-brand-600 dark:border-brand-500/30 dark:border-t-brand-300"></span> Fetching
+                            </span>
+                            <span x-show="state({{ $acc->id }}) === 'queued'" @if($initial['state'] !== 'queued') x-cloak @endif class="badge badge-gray">
+                                <x-icon name="clock" class="size-3.5" /> Waiting
+                            </span>
+                            <span x-show="state({{ $acc->id }}) === 'failed'" @if($initial['state'] !== 'failed') x-cloak @endif class="badge badge-red">
+                                <x-icon name="alert-circle" class="size-3.5" /> Failed
+                            </span>
+                            <span x-show="state({{ $acc->id }}) === 'stopped'" @if($initial['state'] !== 'stopped') x-cloak @endif class="badge badge-gray">
+                                <x-icon name="player-stop" class="size-3.5" /> Stopped
+                            </span>
+                        </span>
+                    </li>
+                @endforeach
+            </ul>
         </div>
     @endif
 

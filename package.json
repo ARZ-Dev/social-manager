@@ -2,10 +2,15 @@
     "private": true,
     "type": "module",
     "scripts": {
-        "build": "vite build",
-        "dev": "vite"
+        "icons": "node scripts/sync-icons.mjs",
+        "dev": "node scripts/sync-icons.mjs && vite",
+        "build": "node scripts/sync-icons.mjs && vite build"
     },
     "devDependencies": {
+        "@fontsource-variable/inter": "^5.1.0",
+        "@tabler/icons": "^3.19.0",
+        "@tailwindcss/forms": "^0.5.9",
+        "apexcharts": "^3.54.1",
         "autoprefixer": "^10.4.20",
         "axios": "^1.7.4",
         "concurrently": "^9.0.1",

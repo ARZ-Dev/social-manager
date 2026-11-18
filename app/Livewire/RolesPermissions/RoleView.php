@@ -23,6 +23,7 @@ class RoleView extends Component
     public bool $editing = false;
     public bool $isAllPermissionsSelected = false;
     public bool $allowPermissionEditing = true;
+    public bool $showModal = false;
 
     public $name = "";
     public $company_id = '';
@@ -58,8 +59,31 @@ class RoleView extends Component
 
     public function clearData()
     {
-        $this->reset('editing', 'name', 'company_id', 'selectedPermissions', 'role');
+        $this->reset('editing', 'name', 'company_id', 'selectedPermissions', 'role', 'isAllPermissionsSelected', 'allowPermissionEditing');
         $this->resetValidation();
+    }
+
+    public function create()
+    {
+        $this->authorize('role-create');
+        $this->clearData();
+        $this->showModal = true;
+    }
+
+    public function closeModal()
+    {
+        $this->showModal = false;
+    }
+
+    /** Tick or untick every action of one module (e.g. all "user-*" permissions). */
+    public function toggleGroup($group)
+    {
+        $names = collect($this->filteredPermissions[$group] ?? [])->map(fn ($p) => $group . '-' . $p['name']);
+        $allOn = $names->every(fn ($n) => in_array($n, $this->selectedPermissions));
+        $this->selectedPermissions = $allOn
+            ? array_values(array_diff($this->selectedPermissions, $names->all()))
+            : array_values(array_unique(array_merge($this->selectedPermissions, $names->all())));
+        $this->isAllPermissionsSelected = count($this->selectedPermissions) == count($this->permissions);
     }
 
     public function togglePermission($permission)
@@ -93,6 +117,7 @@ class RoleView extends Component
         $this->company_id = $this->role->company_id ?? '';
         $this->selectedPermissions = $this->role->permissions()->pluck('name')->toArray();
         $this->isAllPermissionsSelected = count($this->selectedPermissions) == count($this->permissions);
+        $this->showModal = true;
     }
 
     public function rules()
@@ -131,7 +156,7 @@ class RoleView extends Component
         }
         $this->role->syncPermissions($this->selectedPermissions);
 
-        $this->dispatch('dismissModal');
+        $this->showModal = false;
 
         $this->dispatch('swal:success', [
             'title' => 'Great!',
@@ -163,11 +188,7 @@ class RoleView extends Component
     public function render()
     {
         $data = [];
-        $data['roles'] = Role::visibleTo(auth()->user())->with('company')->withCount('users')->get();
-
-
-        
-        $this->dispatch('initializeDatatable');
+        $data['roles'] = Role::visibleTo(auth()->user())->with('company')->withCount(['users', 'permissions'])->orderBy('name')->get();
 
         return view('livewire.roles-permissions.role-view', $data);
     }

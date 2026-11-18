@@ -1,7 +1,5 @@
 <?php
 
-use App\Http\Controllers\HomeController;
-
 use Illuminate\Support\Facades\Route;
 use App\Livewire\Auth\Login;
 use App\Livewire\Dashboard;
@@ -15,7 +13,8 @@ use App\Livewire\Social\SocialMediaView;
 use App\Livewire\Social\SocialConnectSelect;
 use App\Http\Controllers\SocialConnectController;
 
-Route::get('/', [HomeController::class, 'index'])->name('home');
+// The root opens the admin; guests are sent on to the login page by the auth middleware.
+Route::redirect('/', '/dashboard')->name('home');
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////

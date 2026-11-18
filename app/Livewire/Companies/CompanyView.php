@@ -29,7 +29,7 @@ class CompanyView extends Component
     public function render()
     {
         return view('livewire.companies.company-view', [
-            'companies' => Company::visibleTo(auth()->user())->withCount(['branches', 'users'])->latest()->get(),
+            'companies' => Company::visibleTo(auth()->user())->withCount(['branches', 'users', 'socialAccounts'])->orderBy('name')->get(),
         ]);
     }
 }

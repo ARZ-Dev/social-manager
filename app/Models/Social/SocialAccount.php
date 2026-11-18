@@ -55,6 +55,16 @@ class SocialAccount extends Model
         });
     }
 
+    /** "@username" for Instagram, the Page / ad account name otherwise. */
+    public function getDisplayNameAttribute(): string
+    {
+        if ($this->platform === self::INSTAGRAM && $this->username) {
+            return '@' . $this->username;
+        }
+
+        return $this->name ?: $this->external_id;
+    }
+
     public function company(): BelongsTo
     {
         return $this->belongsTo(Company::class);

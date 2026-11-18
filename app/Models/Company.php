@@ -45,6 +45,11 @@ class Company extends Model
         return $query->whereKey($viewer->company_id ?? 0);
     }
 
+    public function socialAccounts(): HasMany
+    {
+        return $this->hasMany(\App\Models\Social\SocialAccount::class);
+    }
+
     public function users(): HasMany
     {
         return $this->hasMany(User::class);

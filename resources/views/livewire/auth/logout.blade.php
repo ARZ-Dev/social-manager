@@ -1,4 +1,4 @@
-<a wire:click="logout" href="#" class="dropdown-item">
-    <i class="ti ti-logout me-2 ti-sm"></i>
-    <span class="align-middle">Log Out</span>
-</a>
+<button type="button" wire:click="logout" class="dropdown-item text-red-600 dark:text-red-400">
+    <x-icon name="logout" class="size-4" />
+    Log out
+</button>

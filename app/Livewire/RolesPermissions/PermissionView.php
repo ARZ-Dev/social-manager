@@ -2,40 +2,39 @@
 
 namespace App\Livewire\RolesPermissions;
 
-use App\Http\Resources\PermissionResource;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
+use Illuminate\Support\Str;
 use Livewire\Component;
 use Spatie\Permission\Models\Permission;
-use Spatie\Permission\Models\Role;
 
+/**
+ * Read-only list of every permission, grouped by module, with the roles that have it.
+ */
 class PermissionView extends Component
 {
     use AuthorizesRequests;
 
-    public $roles;
-    public array $rolesBadgeObj = [];
-
     public function mount()
     {
         $this->authorize('permission-list');
-        $this->roles = Role::all();
-
-        $this->rolesBadgeObj = [];
-        foreach ($this->roles as $role) {
-            $badgeClass = match ($role->name) {
-                'Super Admin' => 'danger',
-                'Procurement Manager' => 'success',
-                default => 'warning',
-            };
-            $this->rolesBadgeObj[$role->name] = "<span class='badge bg-label-$badgeClass m-1'>$role->name</span>";
-        }
     }
 
     public function render()
     {
-        $data = [];
-        $data['permissions'] = PermissionResource::collection(Permission::all());
+        $groups = Permission::with('roles:id,name')
+            ->orderBy('name')
+            ->get()
+            ->map(fn ($p) => [
+                'name' => $p->name,
+                'module' => Str::headline(Str::before($p->name, '-')),
+                'action' => Str::contains($p->name, '-') ? Str::headline(Str::after($p->name, '-')) : '—',
+                'roles' => $p->roles->pluck('name')->sort()->values(),
+            ])
+            ->groupBy('module');
 
-        return view('livewire.roles-permissions.permission-view', $data);
+        return view('livewire.roles-permissions.permission-view', [
+            'groups' => $groups,
+            'total' => $groups->flatten(1)->count(),
+        ]);
     }
 }

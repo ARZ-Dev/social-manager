@@ -1,141 +1,189 @@
+@php
+    $callback = route('social.callback');
+    $err = fn ($field) => $errors->has($field) ? 'input input-error' : 'input';
+@endphp
+
 <div>
-    <div class="card mb-4">
-        <div class="card-header d-flex justify-content-between align-items-center">
-            <h5 class="mb-0">{{ $editing ? 'Edit' : 'Add' }} Company</h5>
-            <a href="{{ route('companies') }}" class="btn btn-primary mb-2 text-nowrap">Companies</a>
-        </div>
-        <div class="card-body">
-            <form class="row g-3" wire:submit="save">
-                <div class="col-12 col-md-6">
-                    <label class="form-label" for="CompanyName">Name</label>
-                    <input wire:model="name" type="text" id="CompanyName" class="form-control" placeholder="Company name" />
-                    @error('name') <div class="text-danger">{{ $message }}</div> @enderror
-                </div>
-                <div class="col-12 col-md-6">
-                    <label class="form-label" for="CompanyEmail">E-mail</label>
-                    <input wire:model="email" type="email" id="CompanyEmail" class="form-control" placeholder="info@company.com" />
-                    @error('email') <div class="text-danger">{{ $message }}</div> @enderror
-                </div>
-                <div class="col-12 col-md-6">
-                    <label class="form-label" for="CompanyPhone">Phone</label>
-                    <input wire:model="phone" type="text" id="CompanyPhone" class="form-control" placeholder="202 555 0111" />
-                    @error('phone') <div class="text-danger">{{ $message }}</div> @enderror
-                </div>
-                <div class="col-12 col-md-6">
-                    <label class="form-label" for="CompanyAddress">Address</label>
-                    <input wire:model="address" type="text" id="CompanyAddress" class="form-control" placeholder="Street, city" />
-                    @error('address') <div class="text-danger">{{ $message }}</div> @enderror
-                </div>
-                <div class="col-12">
-                    <div class="form-check form-switch">
-                        <input wire:model="is_active" class="form-check-input" type="checkbox" id="CompanyActive">
-                        <label class="form-check-label" for="CompanyActive">Active</label>
+    <x-ui.page-header :title="$editing ? 'Edit ' . ($company?->name ?? 'company') : 'Add company'" :back="route('companies')" />
+
+    <form wire:submit="save" class="space-y-6" novalidate>
+        {{-- Details --}}
+        <section class="grid gap-6 lg:grid-cols-3">
+            <div>
+                <h2 class="text-base font-semibold">Details</h2>
+                <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">How the company appears across the app.</p>
+            </div>
+            <div class="card p-5 lg:col-span-2">
+                <div class="grid gap-4 sm:grid-cols-2">
+                    <div class="sm:col-span-2">
+                        <label class="label" for="CompanyName">Name</label>
+                        <input wire:model="name" type="text" id="CompanyName" class="{{ $err('name') }}" placeholder="Company name" required>
+                        @error('name') <p class="field-error">{{ $message }}</p> @enderror
                     </div>
+                    <div>
+                        <label class="label" for="CompanyEmail">E-mail</label>
+                        <input wire:model="email" type="email" id="CompanyEmail" class="{{ $err('email') }}" placeholder="info@company.com">
+                        @error('email') <p class="field-error">{{ $message }}</p> @enderror
+                    </div>
+                    <div>
+                        <label class="label" for="CompanyPhone">Phone</label>
+                        <input wire:model="phone" type="tel" id="CompanyPhone" class="{{ $err('phone') }}" placeholder="202 555 0111">
+                        @error('phone') <p class="field-error">{{ $message }}</p> @enderror
+                    </div>
+                    <div class="sm:col-span-2">
+                        <label class="label" for="CompanyAddress">Address</label>
+                        <input wire:model="address" type="text" id="CompanyAddress" class="{{ $err('address') }}" placeholder="Street, city">
+                        @error('address') <p class="field-error">{{ $message }}</p> @enderror
+                    </div>
+                    <label class="flex items-center gap-3 sm:col-span-2">
+                        <input wire:model="is_active" type="checkbox" class="checkbox" id="CompanyActive">
+                        <span class="text-sm">
+                            <span class="font-medium text-slate-900 dark:text-white">Active</span>
+                            <span class="block text-xs text-slate-500 dark:text-slate-400">Inactive companies can't be picked for new users.</span>
+                        </span>
+                    </label>
                 </div>
-                {{-- Meta app (per company) --}}
-                <div class="col-12" id="meta-app">
-                    <hr class="my-2" />
-                    <h6 class="mb-1"><i class="ti ti-brand-meta me-1"></i> Meta app (Facebook &amp; Instagram)</h6>
-                    <p class="text-muted small mb-3">This company connects its Facebook Pages, Instagram accounts and ad accounts through its own Meta app.</p>
-                </div>
-                <div class="col-12 col-md-6">
-                    <label class="form-label" for="MetaAppId">App ID</label>
-                    <input wire:model="meta_app_id" type="text" inputmode="numeric" id="MetaAppId" class="form-control" placeholder="e.g. 1234567890123456" autocomplete="off" />
-                    @error('meta_app_id') <div class="text-danger">{{ $message }}</div> @enderror
-                </div>
-                <div class="col-12 col-md-6">
-                    <label class="form-label" for="MetaAppSecret">App Secret</label>
-                    <input wire:model="meta_app_secret" type="password" id="MetaAppSecret" class="form-control"
-                        placeholder="{{ $hasMetaSecret ? 'Saved. Leave blank to keep it' : '32-character secret' }}" autocomplete="new-password" />
-                    @error('meta_app_secret') <div class="text-danger">{{ $message }}</div> @enderror
-                    <small class="text-muted">Stored encrypted. Never shown again after saving. Clear the App ID to remove both.</small>
-                </div>
-                <div class="col-12">
-                    <details class="border rounded p-3 bg-lighter">
-                        <summary class="fw-semibold">How do I get the App ID and App Secret?</summary>
-                        <ol class="mt-3 mb-2 small">
-                            <li class="mb-2">Go to <a href="https://developers.facebook.com/apps" target="_blank" rel="noopener">developers.facebook.com/apps</a> and log in with the Facebook account that manages this company's Page. If asked, register as a developer (free).</li>
-                            <li class="mb-2">Click <strong>Create app</strong>. Choose the <strong>Other</strong> use case, then app type <strong>Business</strong>. Name it (e.g. "{{ $name ?: 'Company' }} Social Manager") and select the company's Business portfolio if it has one.</li>
-                            <li class="mb-2">In the app dashboard, add these products: <strong>Facebook Login for Business</strong>, <strong>Instagram</strong> (API setup with Facebook login), <strong>Messenger</strong> and <strong>Marketing API</strong>.</li>
-                            <li class="mb-2">Open <strong>Facebook Login for Business → Settings</strong> and add this exact address under <strong>Valid OAuth Redirect URIs</strong>, then save:
-                                <div class="input-group input-group-sm mt-1" style="max-width: 560px">
-                                    <input type="text" class="form-control" value="{{ route('social.callback') }}" readonly id="MetaCallbackUrl">
-                                    <button class="btn btn-outline-secondary" type="button" onclick="navigator.clipboard.writeText(document.getElementById('MetaCallbackUrl').value); this.innerText='Copied'">Copy</button>
-                                </div>
-                                @if(!str_starts_with(route('social.callback'), 'https://') && !str_contains(route('social.callback'), 'localhost'))
-                                    <span class="text-warning">Meta only accepts HTTPS addresses (except localhost). Serve the app over HTTPS before connecting.</span>
-                                @endif
-                            </li>
-                            <li class="mb-2">Go to <strong>App settings → Basic</strong>. Copy the <strong>App ID</strong>, then click <strong>Show</strong> next to <strong>App Secret</strong> (Facebook asks for your password) and copy it. Paste both here and click Submit.</li>
-                            <li class="mb-2">On the same page, fill in <strong>Privacy Policy URL</strong>, <strong>App icon</strong> and <strong>Category</strong>. Meta needs these before the app can go live.</li>
-                            <li class="mb-2"><strong>Testing:</strong> while the app is in <em>Development</em> mode, only people added under <strong>App roles → Roles</strong> can connect. Add the people who will click "Connect".</li>
-                            <li><strong>Going live:</strong> to connect accounts of people without an app role, request these permissions in <strong>App Review → Permissions and features</strong>, complete <strong>Business verification</strong>, then switch the app to <em>Live</em>:
-                                <div class="mt-1"><code>{{ implode(', ', config('meta.scopes')) }}</code></div>
+            </div>
+        </section>
+
+        {{-- Meta app --}}
+        <section class="grid gap-6 lg:grid-cols-3" id="meta-app">
+            <div>
+                <h2 class="flex items-center gap-2 text-base font-semibold"><x-icon name="brand-meta" class="size-5 text-brand-600 dark:text-brand-400" /> Meta app</h2>
+                <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">The company connects its Facebook Pages, Instagram accounts and ad accounts through its own Meta app.</p>
+                <p class="mt-3">
+                    @if($meta_app_id && $hasMetaSecret)
+                        <span class="badge badge-green"><x-icon name="circle-check" class="size-3.5" /> App ID and secret saved</span>
+                    @else
+                        <span class="badge badge-gray">Not set up</span>
+                    @endif
+                </p>
+            </div>
+            <div class="card p-5 lg:col-span-2">
+                <div class="grid gap-4 sm:grid-cols-2">
+                    <div>
+                        <label class="label" for="MetaAppId">App ID</label>
+                        <input wire:model="meta_app_id" type="text" inputmode="numeric" id="MetaAppId" class="{{ $err('meta_app_id') }}" placeholder="e.g. 1234567890123456" autocomplete="off">
+                        @error('meta_app_id') <p class="field-error">{{ $message }}</p> @enderror
+                    </div>
+                    <div x-data="{ show: false }">
+                        <label class="label" for="MetaAppSecret">App Secret</label>
+                        <div class="relative">
+                            <input wire:model="meta_app_secret" :type="show ? 'text' : 'password'" type="password" id="MetaAppSecret" class="{{ $err('meta_app_secret') }} pr-10"
+                                placeholder="{{ $hasMetaSecret ? 'Saved. Leave blank to keep it' : '32-character secret' }}" autocomplete="new-password">
+                            <button type="button" class="absolute inset-y-0 right-0 flex w-10 items-center justify-center text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                                x-on:click="show = !show" :aria-label="show ? 'Hide secret' : 'Show secret'">
+                                <span x-show="!show"><x-icon name="eye" class="size-4" /></span>
+                                <span x-show="show" x-cloak><x-icon name="eye-off" class="size-4" /></span>
+                            </button>
+                        </div>
+                        @error('meta_app_secret') <p class="field-error">{{ $message }}</p> @enderror
+                        <p class="help">Stored encrypted and never shown again. Clear the App ID to remove both.</p>
+                    </div>
+
+                    <div class="sm:col-span-2">
+                        <label class="label" for="MetaCallbackUrl">OAuth redirect URL</label>
+                        <div class="flex gap-2" x-data="{ copied: false }">
+                            <input type="text" id="MetaCallbackUrl" class="input font-mono text-xs" value="{{ $callback }}" readonly>
+                            <button type="button" class="btn btn-secondary shrink-0" x-on:click="navigator.clipboard.writeText(@js($callback)); copied = true; setTimeout(() => copied = false, 2000)">
+                                <span x-show="!copied"><x-icon name="copy" class="size-4" /></span>
+                                <span x-show="copied" x-cloak><x-icon name="check" class="size-4" /></span>
+                                <span x-text="copied ? 'Copied' : 'Copy'">Copy</span>
+                            </button>
+                        </div>
+                        <p class="help">Add this under Facebook Login for Business → Settings → Valid OAuth Redirect URIs.</p>
+                        @if(!str_starts_with($callback, 'https://') && !str_contains($callback, 'localhost'))
+                            <p class="field-error">Meta only accepts HTTPS addresses (except localhost). Serve the app over HTTPS before connecting.</p>
+                        @endif
+                    </div>
+
+                    <details class="group rounded-lg border border-slate-200 bg-slate-50 sm:col-span-2 dark:border-slate-800 dark:bg-slate-800/40">
+                        <summary class="flex cursor-pointer list-none items-center justify-between gap-2 px-4 py-3 text-sm font-medium text-slate-800 dark:text-slate-200">
+                            How do I get the App ID and App Secret?
+                            <x-icon name="chevron-down" class="size-4 text-slate-400 transition-transform group-open:rotate-180" />
+                        </summary>
+                        <ol class="list-decimal space-y-2 px-4 pb-4 pl-8 text-sm text-slate-600 dark:text-slate-400">
+                            <li>Go to <a href="https://developers.facebook.com/apps" target="_blank" rel="noopener" class="link">developers.facebook.com/apps</a> and log in with the Facebook account that manages this company's Page. Register as a developer if asked (free).</li>
+                            <li>Click <strong>Create app</strong>, choose the <strong>Other</strong> use case, then app type <strong>Business</strong>. Name it (e.g. "{{ $name ?: 'Company' }} Social Manager") and pick the company's Business portfolio if it has one.</li>
+                            <li>Add these products: <strong>Facebook Login for Business</strong>, <strong>Instagram</strong> (API setup with Facebook login), <strong>Messenger</strong> and <strong>Marketing API</strong>.</li>
+                            <li>In <strong>Facebook Login for Business → Settings</strong>, add the redirect URL above under <strong>Valid OAuth Redirect URIs</strong> and save.</li>
+                            <li>In <strong>App settings → Basic</strong>, add your domain under <strong>App domains</strong>, copy the <strong>App ID</strong>, click <strong>Show</strong> next to <strong>App Secret</strong> and copy it. Paste both here.</li>
+                            <li>On the same page, fill in <strong>Privacy Policy URL</strong>, <strong>App icon</strong> and <strong>Category</strong>. Meta needs these before going live.</li>
+                            <li><strong>Testing:</strong> in Development mode, only people listed under <strong>App roles → Roles</strong> can connect.</li>
+                            <li><strong>Going live:</strong> request these permissions in <strong>App Review</strong>, complete <strong>Business verification</strong>, then switch the app to Live:
+                                <code class="mt-1 block break-words rounded bg-white p-2 text-xs dark:bg-slate-900">{{ implode(', ', config('meta.scopes')) }}</code>
                             </li>
                         </ol>
-                        <p class="small text-muted mb-0">Then open <strong>Social Media</strong> in the menu, choose this company and click <strong>Connect Facebook &amp; Instagram</strong>.</p>
                     </details>
                 </div>
+            </div>
+        </section>
 
-                @can('branch-list')
-                <div class="col-12">
-                    <hr class="my-2" />
-                    <div class="d-flex justify-content-between align-items-center mb-2">
-                        <h6 class="mb-0">Branches</h6>
-                        @can('branch-create')
-                            <button type="button" wire:click="addBranch" class="btn btn-sm btn-label-primary">
-                                <i class="ti ti-plus ti-xs me-1"></i> Add Branch
-                            </button>
-                        @endcan
-                    </div>
-
-                    @forelse($branches as $i => $branch)
-                        <div class="border rounded p-3 mb-2" wire:key="branch-{{ $branch['id'] ?? 'new' }}-{{ $i }}">
-                            <div class="row g-2 align-items-end">
-                                <div class="col-12 col-md-3">
-                                    <label class="form-label">Name</label>
-                                    <input wire:model="branches.{{ $i }}.name" type="text" class="form-control" placeholder="Branch name" />
-                                    @error("branches.$i.name") <div class="text-danger">{{ $message }}</div> @enderror
-                                </div>
-                                <div class="col-12 col-md-2">
-                                    <label class="form-label">External ID</label>
-                                    <input wire:model="branches.{{ $i }}.external_id" type="text" class="form-control" />
-                                    @error("branches.$i.external_id") <div class="text-danger">{{ $message }}</div> @enderror
-                                </div>
-                                <div class="col-12 col-md-2">
-                                    <label class="form-label">Phone</label>
-                                    <input wire:model="branches.{{ $i }}.phone" type="text" class="form-control" />
-                                    @error("branches.$i.phone") <div class="text-danger">{{ $message }}</div> @enderror
-                                </div>
-                                <div class="col-12 col-md-3">
-                                    <label class="form-label">Address</label>
-                                    <input wire:model="branches.{{ $i }}.address" type="text" class="form-control" />
-                                    @error("branches.$i.address") <div class="text-danger">{{ $message }}</div> @enderror
-                                </div>
-                                <div class="col-8 col-md-1">
-                                    <div class="form-check form-switch mb-2">
-                                        <input wire:model="branches.{{ $i }}.is_active" class="form-check-input" type="checkbox" id="BranchActive{{ $i }}">
-                                        <label class="form-check-label" for="BranchActive{{ $i }}">Active</label>
+        {{-- Branches --}}
+        @can('branch-list')
+            <section class="grid gap-6 lg:grid-cols-3">
+                <div>
+                    <h2 class="text-base font-semibold">Branches</h2>
+                    <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">Locations or units of this company.</p>
+                </div>
+                <div class="card lg:col-span-2">
+                    <div class="divide-y divide-slate-100 dark:divide-slate-800">
+                        @forelse($branches as $i => $branch)
+                            <div class="p-5" wire:key="branch-{{ $branch['id'] ?? 'new' }}-{{ $i }}">
+                                <div class="grid gap-3 sm:grid-cols-6">
+                                    <div class="sm:col-span-3">
+                                        <label class="label" for="BranchName{{ $i }}">Name</label>
+                                        <input wire:model="branches.{{ $i }}.name" id="BranchName{{ $i }}" type="text" class="{{ $err("branches.$i.name") }}" placeholder="Branch name">
+                                        @error("branches.$i.name") <p class="field-error">{{ $message }}</p> @enderror
+                                    </div>
+                                    <div class="sm:col-span-3">
+                                        <label class="label" for="BranchExt{{ $i }}">External ID</label>
+                                        <input wire:model="branches.{{ $i }}.external_id" id="BranchExt{{ $i }}" type="text" class="{{ $err("branches.$i.external_id") }}">
+                                        @error("branches.$i.external_id") <p class="field-error">{{ $message }}</p> @enderror
+                                    </div>
+                                    <div class="sm:col-span-2">
+                                        <label class="label" for="BranchPhone{{ $i }}">Phone</label>
+                                        <input wire:model="branches.{{ $i }}.phone" id="BranchPhone{{ $i }}" type="tel" class="{{ $err("branches.$i.phone") }}">
+                                        @error("branches.$i.phone") <p class="field-error">{{ $message }}</p> @enderror
+                                    </div>
+                                    <div class="sm:col-span-4">
+                                        <label class="label" for="BranchAddress{{ $i }}">Address</label>
+                                        <input wire:model="branches.{{ $i }}.address" id="BranchAddress{{ $i }}" type="text" class="{{ $err("branches.$i.address") }}">
+                                        @error("branches.$i.address") <p class="field-error">{{ $message }}</p> @enderror
                                     </div>
                                 </div>
-                                <div class="col-4 col-md-1 text-end">
+                                <div class="mt-3 flex items-center justify-between">
+                                    <label class="flex items-center gap-2 text-sm">
+                                        <input wire:model="branches.{{ $i }}.is_active" type="checkbox" class="checkbox"> Active
+                                    </label>
                                     @if(empty($branch['id']) || auth()->user()->can('branch-delete'))
-                                        <button type="button" wire:click="removeBranch({{ $i }})" class="btn btn-icon btn-label-danger" title="Remove branch">
-                                            <i class="ti ti-trash"></i>
+                                        <button type="button" wire:click="removeBranch({{ $i }})" class="btn btn-ghost btn-sm text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-500/10">
+                                            <x-icon name="trash" class="size-4" /> Remove
                                         </button>
                                     @endif
                                 </div>
                             </div>
+                        @empty
+                            <x-ui.empty icon="map-pin" title="No branches yet" compact />
+                        @endforelse
+                    </div>
+                    @can('branch-create')
+                        <div class="border-t border-slate-200 p-3 dark:border-slate-800">
+                            <button type="button" wire:click="addBranch" class="btn btn-ghost btn-sm w-full text-brand-700 dark:text-brand-300">
+                                <x-icon name="plus" class="size-4" /> Add branch
+                            </button>
                         </div>
-                    @empty
-                        <p class="text-muted mb-0">No branches yet.</p>
-                    @endforelse
+                    @endcan
                 </div>
-                @endcan
-                <div class="col-12 text-end">
-                    <button type="submit" class="btn btn-primary">Submit</button>
-                </div>
-            </form>
+            </section>
+        @endcan
+
+        <div class="sticky bottom-0 -mx-4 flex justify-end gap-2 border-t border-slate-200 bg-slate-50/90 px-4 py-4 backdrop-blur sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8 dark:border-slate-800 dark:bg-slate-950/90">
+            <a href="{{ route('companies') }}" wire:navigate class="btn btn-secondary">Cancel</a>
+            <button type="submit" class="btn btn-primary" wire:loading.attr="disabled" wire:target="save">
+                <span wire:loading wire:target="save" class="size-4 animate-spin rounded-full border-2 border-white/40 border-t-white"></span>
+                {{ $editing ? 'Save changes' : 'Create company' }}
+            </button>
         </div>
-    </div>
+    </form>
 </div>

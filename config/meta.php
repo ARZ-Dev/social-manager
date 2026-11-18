@@ -41,6 +41,34 @@ return [
         'instagram_media' => ['reach', 'views', 'likes', 'comments', 'saved', 'shares', 'total_interactions'],
     ],
 
+    // How daily account metrics appear on the Overview tab, in chart order.
+    // agg: 'sum' adds the daily values, 'last' shows the latest one (running totals).
+    // kpi: 'reach' counts toward the Reach card, 'new_followers' / 'followers_total'
+    // toward the follower growth line. Metrics not listed still chart under their raw name.
+    'daily_metrics' => [
+        'reach' => ['label' => 'Reach', 'agg' => 'sum', 'kpi' => 'reach'],
+        // Meta calls this "Viewers"; it replaced Page reach in 2025, so it charts with Instagram reach.
+        'page_total_media_view_unique' => ['label' => 'Reach', 'agg' => 'sum', 'kpi' => 'reach'],
+        'page_impressions_unique' => ['label' => 'Reach', 'agg' => 'sum', 'kpi' => 'reach'],
+        'page_post_engagements' => ['label' => 'Post engagements', 'agg' => 'sum'],
+        'page_views_total' => ['label' => 'Page views', 'agg' => 'sum'],
+        'follower_count' => ['label' => 'New followers', 'agg' => 'sum', 'kpi' => 'new_followers'],
+        'page_follows' => ['label' => 'Followers', 'agg' => 'last', 'kpi' => 'followers_total'],
+    ],
+
+    // Readable names for per-post metrics (likes / comments are shown separately).
+    'post_metric_labels' => [
+        'post_impressions_unique' => 'Reach',
+        'post_total_media_view_unique' => 'Reach', // Meta's "Viewers"
+        'post_clicks' => 'Clicks',
+        'post_reactions_by_type_total' => 'Reactions',
+        'reach' => 'Reach',
+        'views' => 'Views',
+        'saved' => 'Saves',
+        'shares' => 'Shares',
+        'total_interactions' => 'Interactions',
+    ],
+
     // Audience demographics. Each fetch replaces the previous snapshot.
     'demographics' => [
         // Facebook Pages: metric => dimension. Meta removed age and gender for

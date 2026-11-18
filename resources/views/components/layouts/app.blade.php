@@ -1,65 +1,35 @@
 <x-layouts.base>
-
     @guest
         {{ $slot }}
     @endguest
 
-    <!-- Layout wrapper -->
+    @auth
+        <div x-data="{ sidebar: false }" x-on:keydown.escape.window="sidebar = false" class="min-h-full">
+            {{-- Mobile: dim the page behind the open sidebar --}}
+            <div x-show="sidebar" x-transition.opacity x-cloak x-on:click="sidebar = false"
+                class="fixed inset-0 z-40 bg-slate-900/50 lg:hidden"></div>
 
-
-
-    <div class="layout-wrapper layout-content-navbar">
-
-        @auth
-
-        <div class="layout-container">
-
+            <aside id="sidebar"
+                class="fixed inset-y-0 left-0 z-50 flex w-64 -translate-x-full flex-col border-r border-slate-200 bg-white transition-transform duration-200 lg:translate-x-0 dark:border-slate-800 dark:bg-slate-900"
+                :class="sidebar && '!translate-x-0'">
                 @include('components.sidebar')
+            </aside>
 
-                <!-- Layout container -->
-                <div class="layout-page">
+            {{-- Full screen height, so the footer stays at the bottom on short pages --}}
+            <div class="flex min-h-dvh flex-col lg:pl-64">
+                @include('components.navbar')
 
-                    <!-- Navbar -->
-                    @include('components.navbar')
-                    <!-- / Navbar -->
+                <main class="mx-auto w-full max-w-7xl flex-1 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+                    {{ $slot }}
+                </main>
 
-                    <!-- Content wrapper -->
-                    <div class="content-wrapper">
-
-                        <!-- Content -->
-                        <div class="container-xxl flex-grow-1 container-p-y">
-                            {{ $slot }}
-                        </div>
-
-                        <!-- Footer -->
-                        <footer class="content-footer footer bg-footer-theme">
-                            <div class="container-xxl">
-                                <div class="footer-container d-flex align-items-center justify-content-between py-2 flex-md-row flex-column">
-                                    <div>
-                                        SocialM © <?php echo date('Y'); ?>. All Rights Reserved.
-                                    </div>
-                                    <div>
-                                        Designed & Developed by <a href="https://www.aarzgt.com" target="_blank" class="fw-semibold">ARZGT</a>
-                                    </div>
-                                </div>
-                            </div>
-                        </footer>
-
-                        <div class="content-backdrop fade"></div>
-
-                    </div>
-
-                </div>
-
+                <footer class="flex justify-end px-4 py-4 text-right text-xs text-slate-400 sm:px-6 lg:px-8 dark:text-slate-500">
+                    <p>
+                        SocialM © {{ date('Y') }} · Designed &amp; developed by
+                        <a href="https://www.aarzgt.com/" target="_blank" rel="noopener" class="font-medium hover:text-slate-600 dark:hover:text-slate-300">ARZGT</a>
+                    </p>
+                </footer>
             </div>
-
-            <!-- Overlay -->
-            <div class="layout-overlay layout-menu-toggle"></div>
-
-            <!-- Drag Target Area To SlideIn Menu On Small Screens -->
-            <div class="drag-target"></div>
-
-        @endauth
-    </div>
-    <!-- / Layout wrapper -->
+        </div>
+    @endauth
 </x-layouts.base>

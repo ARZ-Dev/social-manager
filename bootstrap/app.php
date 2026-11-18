@@ -11,7 +11,8 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware) {
-        //
+        // Set by the browser (light/dark), read by the layout to render the right theme.
+        $middleware->encryptCookies(except: ['theme']);
     })
     ->withExceptions(function (Exceptions $exceptions) {
         //

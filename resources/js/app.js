@@ -27,6 +27,38 @@ prefersDark.addEventListener('change', () => {
     if (storedTheme() === 'system') applyTheme('system');
 });
 
+// How long a modal's exit animation takes (resources/views/components/ui/modal.blade.php).
+const MODAL_LEAVE_MS = 180;
+
+document.addEventListener('livewire:init', () => {
+    // When the server stops rendering a modal (closed after a save, or after the
+    // close button already started the animation), keep it on the page until its
+    // exit animation has played, then remove it.
+    window.Livewire.hook('morph.removing', ({ el, skip }) => {
+        if (!el.hasAttribute?.('data-ui-modal')) return;
+        skip();
+        const modal = window.Alpine.$data(el);
+        if (!modal.closedAt) {
+            modal.closedAt = Date.now();
+            modal.show = false;
+        }
+        const left = Math.max(0, MODAL_LEAVE_MS - (Date.now() - modal.closedAt));
+        setTimeout(() => el.remove(), left + 20);
+    });
+
+    // A failed background progress check (checkSync) must not pop up Livewire's error
+    // screen: the banner just tries again a few seconds later.
+    window.Livewire.hook('request', ({ payload, fail }) => {
+        if (typeof payload === 'string' && payload.includes('"method":"checkSync"')) {
+            fail(({ preventDefault }) => {
+                preventDefault();
+                // The pending $wire call never settles; tell the banner to carry on.
+                window.dispatchEvent(new CustomEvent('sync-check-failed'));
+            });
+        }
+    });
+});
+
 // wire:navigate copies the new page's <html> attributes; make sure the theme sticks.
 document.addEventListener('livewire:navigated', () => applyTheme(storedTheme(), false));
 

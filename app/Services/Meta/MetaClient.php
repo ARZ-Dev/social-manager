@@ -3,6 +3,9 @@
 namespace App\Services\Meta;
 
 use App\Models\Company;
+use GuzzleHttp\Client;
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Facades\Http;
 
 /**
@@ -12,6 +15,14 @@ use Illuminate\Support\Facades\Http;
 class MetaClient
 {
     protected string $base;
+
+    /**
+     * One HTTP client for every call, so the connection to graph.facebook.com
+     * stays open (keep-alive) instead of a new TCP + TLS connection per request.
+     * A fetch makes hundreds of calls; opening that many connections can trip
+     * server firewalls/connection limits (seen as "Operation not permitted").
+     */
+    protected ?Client $client = null;
 
     public function __construct(protected string $appId, protected string $appSecret)
     {
@@ -90,13 +101,35 @@ class MetaClient
             if (!$next || $page >= $maxPages) {
                 return;
             }
-            $response = $this->send(Http::timeout(60)->get($next));
+            $response = $this->call(fn () => $this->http()->get($next));
         }
     }
 
     protected function request(string $path, array $params): array
     {
-        return $this->send(Http::timeout(60)->get($this->base . '/' . ltrim($path, '/'), $params));
+        return $this->call(fn () => $this->http()->get($this->base . '/' . ltrim($path, '/'), $params));
+    }
+
+    /** Run a request; a dropped connection becomes a normal Meta error (a warning, not a crash). */
+    protected function call(callable $request): array
+    {
+        try {
+            return $this->send($request());
+        } catch (ConnectionException $e) {
+            throw new MetaApiException('Could not reach Meta: ' . $e->getMessage());
+        }
+    }
+
+    /** A request on the shared client; up to 3 attempts if the connection itself drops. */
+    protected function http(): PendingRequest
+    {
+        // Built through the Http factory so Http::fake() still applies in tests.
+        $this->client ??= Http::buildClient();
+
+        return Http::setClient($this->client)
+            ->connectTimeout(15)
+            ->timeout(60)
+            ->retry(3, 1000, fn ($e) => $e instanceof ConnectionException, throw: false);
     }
 
     protected function send($response): array

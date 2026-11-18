@@ -140,7 +140,7 @@
             </form>
 
             <x-slot:footer>
-                <button type="button" class="btn btn-secondary" wire:click="closeModal">Cancel</button>
+                <button type="button" class="btn btn-secondary" x-on:click="close()">Cancel</button>
                 <button type="submit" form="role-form" class="btn btn-primary" wire:loading.attr="disabled" wire:target="store">
                     <span wire:loading wire:target="store" class="size-4 animate-spin rounded-full border-2 border-white/40 border-t-white"></span>
                     {{ $editing ? 'Save role' : 'Create role' }}

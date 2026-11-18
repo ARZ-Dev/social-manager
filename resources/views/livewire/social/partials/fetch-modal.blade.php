@@ -97,7 +97,7 @@
     </form>
 
     <x-slot:footer>
-        <button type="button" class="btn btn-secondary" wire:click="closeFetch">Cancel</button>
+        <button type="button" class="btn btn-secondary" x-on:click="close()">Cancel</button>
         <button type="submit" form="fetch-form" class="btn btn-primary" @disabled($picked === 0) wire:loading.attr="disabled" wire:target="startFetch">
             <x-icon name="refresh" class="size-4" />
             Fetch {{ $picked === $accounts->count() ? 'all ' . $picked : $picked }} {{ str('account')->plural($picked) }}

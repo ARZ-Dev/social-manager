@@ -27,6 +27,7 @@ class SocialAccount extends Model
             'access_token' => 'encrypted',
             'token_expires_at' => 'datetime',
             'last_synced_at' => 'datetime',
+            'sync_queued_at' => 'datetime',
             'meta' => 'array',
         ];
     }

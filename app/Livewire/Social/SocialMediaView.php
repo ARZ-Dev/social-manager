@@ -58,6 +58,9 @@ class SocialMediaView extends Component
     #[Url(as: 'sort')]
     public string $postSort = 'newest';
 
+    #[Url(as: 'platform')]
+    public string $postPlatform = ''; // Posts tab: '' | facebook | instagram
+
     public string $companySearch = '';
     public string $chatSearch = '';
     public string $audienceMetric = 'follower_demographics';
@@ -134,6 +137,11 @@ class SocialMediaView extends Component
         $this->reset('trendMetric', 'openPost', 'openConversation', 'breakdownAd');
         $this->resetPage();
 
+        // A platform filter that excludes the chosen account no longer makes sense.
+        if ($acc && $this->postPlatform && $acc->platform !== $this->postPlatform) {
+            $this->postPlatform = '';
+        }
+
         // Jump to a tab that has data for this kind of account.
         if ($acc?->platform === SocialAccount::ADS) {
             $this->tab = 'ads';
@@ -195,6 +203,27 @@ class SocialMediaView extends Component
 
     public function updatedPostSort()
     {
+        $this->resetPage();
+    }
+
+    /** Posts tab: show one platform only ('' = all). */
+    public function setPostPlatform($platform = '')
+    {
+        $this->postPlatform = in_array($platform, [SocialAccount::FACEBOOK, SocialAccount::INSTAGRAM], true) ? $platform : '';
+        $this->reset('openPost');
+        $this->resetPage();
+
+        // Drop an account filter that belongs to the other platform.
+        if ($this->postPlatform && $this->account
+            && $this->accountsQuery()->whereKey($this->account)->value('platform') !== $this->postPlatform) {
+            $this->account = '';
+        }
+    }
+
+    /** Posts tab: clear search, platform and account filters. */
+    public function clearPostFilters()
+    {
+        $this->reset('postSearch', 'postPlatform', 'account', 'openPost');
         $this->resetPage();
     }
 
@@ -447,7 +476,7 @@ class SocialMediaView extends Component
         if ($accounts->isNotEmpty()) {
             $data += match ($this->tab) {
                 'overview' => $this->overviewData($scoped->whereIn('id', $socialIds)->values()),
-                'posts' => $this->postsData($socialIds),
+                'posts' => $this->postsData($scoped->whereIn('id', $socialIds)->values(), $accounts),
                 'audience' => $this->audienceData($scoped->whereIn('id', $socialIds)->values()),
                 'messages' => $this->messagesData($socialIds),
                 'ads' => $this->adsData($adIds),
@@ -623,12 +652,19 @@ class SocialMediaView extends Component
         ];
     }
 
-    protected function postsData(Collection $socialIds): array
+    /**
+     * Posts of the accounts in scope, optionally one platform only, with the
+     * counts per platform and the accounts offered in the filter.
+     */
+    protected function postsData(Collection $scopedSocial, Collection $allAccounts): array
     {
         $term = trim($this->postSearch);
-        $query = SocialPost::with('account')
-            ->whereIn('social_account_id', $socialIds)
-            ->when($term !== '', fn ($q) => $q->where('message', 'like', '%' . $term . '%'));
+        $search = fn ($q) => $q->when($term !== '', fn ($q) => $q->where('message', 'like', '%' . $term . '%'));
+        $ids = $scopedSocial
+            ->when($this->postPlatform, fn ($c) => $c->where('platform', $this->postPlatform))
+            ->pluck('id');
+
+        $query = SocialPost::with('account')->whereIn('social_account_id', $ids)->tap($search);
 
         match ($this->postSort) {
             'engagement' => $query->orderByRaw('(like_count + comment_count + share_count) DESC'),
@@ -637,9 +673,22 @@ class SocialMediaView extends Component
             default => $query->latest('posted_at'),
         };
 
+        // Matching posts per platform across all the company's accounts (search
+        // applied, account and platform filters not), so the switch always offers both.
+        $social = $allAccounts->whereIn('platform', [SocialAccount::FACEBOOK, SocialAccount::INSTAGRAM])->values();
+        $perAccount = SocialPost::whereIn('social_account_id', $social->pluck('id'))
+            ->tap($search)
+            ->selectRaw('social_account_id, COUNT(*) as n')
+            ->groupBy('social_account_id')
+            ->pluck('n', 'social_account_id');
+        $platformCounts = $social->groupBy('platform')
+            ->map(fn ($list) => (int) $list->sum(fn ($a) => $perAccount[$a->id] ?? 0));
+
         return [
             'posts' => $query->paginate(12),
-            'postTotal' => SocialPost::whereIn('social_account_id', $socialIds)->count(),
+            'postTotal' => SocialPost::whereIn('social_account_id', $social->pluck('id'))->count(),
+            'platformCounts' => $platformCounts,
+            'postAccounts' => $social,
         ];
     }
 

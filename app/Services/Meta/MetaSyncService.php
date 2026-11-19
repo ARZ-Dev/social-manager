@@ -33,18 +33,37 @@ class MetaSyncService
     /** Returns true when the fetch should stop (Stop pressed or a newer fetch took over). */
     protected ?\Closure $shouldStop = null;
 
+    protected ?SyncProgress $progress = null;
+
+    /**
+     * Steps of a fetch per platform, with their rough share of the time.
+     * Reading posts dominates: every post costs an insights and a comments call.
+     */
+    protected const STEPS = [
+        SocialAccount::FACEBOOK => ['profile' => 2, 'posts' => 60, 'insights' => 15, 'audience' => 5, 'messages' => 18],
+        SocialAccount::INSTAGRAM => ['profile' => 2, 'posts' => 60, 'insights' => 10, 'audience' => 13, 'messages' => 15],
+        SocialAccount::ADS => ['ads' => 50, 'breakdowns' => 50],
+    ];
+
     /**
      * Fetch one account from $since (default: META_HISTORY_DAYS ago) until today.
      * $shouldStop is checked between steps; when it returns true a SyncStopped
      * exception ends the fetch, keeping what was saved so far.
+     * $onProgress(int $percent, string $step) is called as the fetch moves on.
      *
      * @return array{counts: array<string,int>, warnings: string[]}
      */
-    public function syncAccount(SocialAccount $account, ?CarbonInterface $since = null, ?callable $shouldStop = null): array
+    public function syncAccount(SocialAccount $account, ?CarbonInterface $since = null, ?callable $shouldStop = null, ?callable $onProgress = null): array
     {
         $this->warnings = [];
         $this->badMetrics = [];
         $this->shouldStop = $shouldStop ? \Closure::fromCallable($shouldStop) : null;
+
+        $steps = self::STEPS[$account->platform] ?? [];
+        if ($account->platform === SocialAccount::INSTAGRAM && !$account->parent) {
+            unset($steps['messages']); // Instagram DMs need the linked Page
+        }
+        $this->progress = new SyncProgress($steps, $onProgress ? \Closure::fromCallable($onProgress) : null);
 
         // Calls go through the owning company's own Meta app.
         try {
@@ -88,6 +107,7 @@ class MetaSyncService
         $token = $account->access_token;
         $counts = ['posts' => 0, 'comments' => 0, 'insights' => 0, 'audience segments' => 0, 'conversations' => 0];
 
+        $this->progress?->start('profile');
         $this->attempt($account, 'page info', function () use ($account, $token) {
             $info = $this->meta->get($account->external_id, ['fields' => 'name,followers_count,fan_count,picture{url}'], $token);
             $account->update([
@@ -100,6 +120,7 @@ class MetaSyncService
             ]);
         });
 
+        $this->progress?->start('posts');
         $this->attempt($account, 'posts', function () use ($account, $token, &$counts) {
             $posts = $this->meta->paginate($account->external_id . '/posts', [
                 'fields' => 'id,message,created_time,permalink_url,full_picture,status_type,shares,'
@@ -127,15 +148,19 @@ class MetaSyncService
 
                 $counts['comments'] += $this->syncFacebookComments($account, $post, $token);
                 $this->syncPostInsights($account, $post, 'facebook_post', $token);
+                $this->progress?->at($this->periodFraction($post->posted_at));
             }
         });
 
+        $this->progress?->start('insights');
         $this->attempt($account, 'page insights', function () use ($account, $token, &$counts) {
             $counts['insights'] = $this->syncAccountInsights($account, 'facebook_page', $token, 90);
         });
 
+        $this->progress?->start('audience');
         $counts['audience segments'] = $this->syncPageDemographics($account, $token);
 
+        $this->progress?->start('messages');
         $this->attempt($account, 'Messenger conversations', function () use ($account, $token, &$counts) {
             $counts['conversations'] = $this->syncConversations($account, $account->external_id, null, $token);
         });
@@ -182,6 +207,7 @@ class MetaSyncService
         $token = $account->access_token;
         $counts = ['posts' => 0, 'comments' => 0, 'insights' => 0, 'audience segments' => 0, 'conversations' => 0];
 
+        $this->progress?->start('profile');
         $this->attempt($account, 'profile', function () use ($account, $token) {
             $info = $this->meta->get($account->external_id, [
                 'fields' => 'username,name,profile_picture_url,followers_count,follows_count,media_count',
@@ -198,6 +224,7 @@ class MetaSyncService
             ]);
         });
 
+        $this->progress?->start('posts');
         $this->attempt($account, 'media', function () use ($account, $token, &$counts) {
             $media = $this->meta->paginate($account->external_id . '/media', [
                 'fields' => 'id,caption,media_type,media_product_type,media_url,thumbnail_url,permalink,timestamp,like_count,comments_count',
@@ -224,18 +251,22 @@ class MetaSyncService
 
                 $counts['comments'] += $this->syncInstagramComments($account, $post, $token);
                 $this->syncPostInsights($account, $post, 'instagram_media', $token);
+                $this->progress?->at($this->periodFraction($post->posted_at));
             }
         });
 
         // Instagram allows at most 30 days per insights request.
+        $this->progress?->start('insights');
         $this->attempt($account, 'account insights', function () use ($account, $token, &$counts) {
             $counts['insights'] = $this->syncAccountInsights($account, 'instagram_account', $token, 30);
         });
 
+        $this->progress?->start('audience');
         $counts['audience segments'] = $this->syncInstagramDemographics($account, $token);
 
         // Instagram DMs are read through the linked Facebook Page.
         if ($account->parent) {
+            $this->progress?->start('messages');
             $this->attempt($account, 'Instagram conversations', function () use ($account, $token, &$counts) {
                 try {
                     $counts['conversations'] = $this->syncConversations($account, $account->parent->external_id, 'instagram', $token);
@@ -342,8 +373,9 @@ class MetaSyncService
         $n = 0;
         $end = now(); // fixed once, so the loop always terminates
         $recentOnly = config("meta.recent_only.$metricSet", []);
+        $metrics = array_values(config("meta.metrics.$metricSet"));
 
-        foreach (config("meta.metrics.$metricSet") as $metric) {
+        foreach ($metrics as $i => $metric) {
             $from = $this->since->copy();
             $until = $end;
             if (isset($recentOnly[$metric])) {
@@ -352,6 +384,8 @@ class MetaSyncService
                 $until = now('America/Los_Angeles')->startOfDay();
                 $from = $from->max($until->copy()->subDays($recentOnly[$metric] - 1));
             }
+            $first = $from->getTimestamp();
+            $span = max(1, $until->getTimestamp() - $first);
             try {
                 while ($from->lt($until)) {
                     $this->checkStop();
@@ -381,10 +415,12 @@ class MetaSyncService
                         }
                     }
                     $from = $to;
+                    $this->progress?->at(($i + ($from->getTimestamp() - $first) / $span) / count($metrics));
                 }
             } catch (MetaApiException $e) {
                 $this->warnOnce($account, "account metric '$metric'", $e);
             }
+            $this->progress?->count($i + 1, count($metrics));
         }
 
         return $n;
@@ -398,8 +434,10 @@ class MetaSyncService
     protected function syncPageDemographics(SocialAccount $account, string $token): int
     {
         $n = 0;
+        $requests = config('meta.demographics.facebook_page');
+        $done = 0;
 
-        foreach (config('meta.demographics.facebook_page') as $metric => $dimension) {
+        foreach ($requests as $metric => $dimension) {
             $this->checkStop();
             try {
                 $res = $this->meta->get($account->external_id . '/insights', ['metric' => $metric], $token);
@@ -407,6 +445,7 @@ class MetaSyncService
             } catch (MetaApiException $e) {
                 $this->warnOnce($account, "audience metric '$metric'", $e);
             }
+            $this->progress?->count(++$done, count($requests));
         }
 
         return $n;
@@ -420,6 +459,8 @@ class MetaSyncService
     {
         $cfg = config('meta.demographics.instagram_account');
         $n = 0;
+        $requests = count($cfg['metrics']) * count($cfg['breakdowns']);
+        $done = 0;
 
         foreach ($cfg['metrics'] as $metric) {
             foreach ($cfg['breakdowns'] as $dimension) {
@@ -440,6 +481,7 @@ class MetaSyncService
                         $this->warnOnce($account, "audience metric '$metric'", $e);
                     }
                 }
+                $this->progress?->count(++$done, $requests);
             }
         }
 
@@ -565,6 +607,7 @@ class MetaSyncService
                 );
             }
             $n++;
+            $this->progress?->at($this->periodFraction($updated));
         }
 
         return $n;
@@ -581,6 +624,7 @@ class MetaSyncService
             return $counts;
         }
 
+        $this->progress?->start('ads');
         $this->attempt($account, 'boosts / ads', function () use ($account, &$counts) {
             $range = json_encode(['since' => $this->since->toDateString(), 'until' => now()->toDateString()]);
             $ads = $this->meta->paginate($account->external_id . '/ads', [
@@ -613,13 +657,19 @@ class MetaSyncService
                     ]
                 );
                 $counts['ads']++;
+                // Meta doesn't say how many ads there are: creep toward the end of the step.
+                $this->progress?->at($counts['ads'] / ($counts['ads'] + 20));
             }
         });
 
-        foreach (config('meta.ad_breakdowns') as $name => $breakdowns) {
+        $this->progress?->start('breakdowns');
+        $breakdownSets = config('meta.ad_breakdowns');
+        $done = 0;
+        foreach ($breakdownSets as $name => $breakdowns) {
             $this->attempt($account, "ad breakdown '$name'", function () use ($account, $name, $breakdowns, &$counts) {
                 $counts['ad breakdown rows'] += $this->syncAdBreakdown($account, $name, $breakdowns);
             });
+            $this->progress?->count(++$done, count($breakdownSets));
         }
 
         return $counts;
@@ -704,6 +754,21 @@ class MetaSyncService
         if ($this->shouldStop && ($this->shouldStop)()) {
             throw new SyncStopped('The fetch was stopped.');
         }
+    }
+
+    /**
+     * How far back in the fetch period $date is: 0 = now, 1 = the period's
+     * start. Posts and conversations come newest first, so this tracks how
+     * much of the period has been read.
+     */
+    protected function periodFraction(?CarbonInterface $date): float
+    {
+        $span = now()->getTimestamp() - $this->since->getTimestamp();
+        if (!$date || $span <= 0) {
+            return 0;
+        }
+
+        return (now()->getTimestamp() - $date->getTimestamp()) / $span;
     }
 
     /** Meta's answer when an account is too small for a metric (e.g. under 100 engagements). */

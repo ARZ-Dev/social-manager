@@ -66,11 +66,14 @@ class SyncSocialAccounts
                 continue;
             }
 
-            $ours()->update(['sync_state' => 'running']);
+            $ours()->update(['sync_state' => 'running', 'sync_progress' => 0, 'sync_step' => null]);
             $outcome = 'done';
 
+            // Saved for the page's progress list (the service throttles the calls).
+            $onProgress = fn (int $percent, string $step) => $ours()->update(['sync_progress' => $percent, 'sync_step' => $step]);
+
             try {
-                $result = $sync->syncAccount($account, $since, fn () => !$stillOurs());
+                $result = $sync->syncAccount($account, $since, fn () => !$stillOurs(), $onProgress);
                 // What this fetch brought in, for the progress list.
                 $fresh = $account->fresh();
                 $fresh->update(['meta' => array_merge($fresh->meta ?? [], ['last_fetch_counts' => array_filter($result['counts'])])]);
@@ -84,7 +87,8 @@ class SyncSocialAccounts
             } finally {
                 // Only if the run still owns the account (a newer fetch may have taken over).
                 SocialAccount::whereKey($id)->where('sync_run_id', $this->runId)
-                    ->update(['sync_queued_at' => null, 'sync_state' => $outcome]);
+                    ->update(['sync_queued_at' => null, 'sync_state' => $outcome, 'sync_step' => null]
+                        + ($outcome === 'done' ? ['sync_progress' => 100] : []));
             }
         }
     }

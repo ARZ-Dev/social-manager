@@ -321,7 +321,7 @@ class SocialMediaView extends Component
         $ids = $all->filter(fn ($id) => in_array((string) $id, $this->fetchAccounts, true))->values();
         $runId = (string) Str::uuid();
 
-        SocialAccount::whereKey($ids)->update(['sync_queued_at' => now(), 'sync_run_id' => $runId, 'sync_state' => 'queued']);
+        SocialAccount::whereKey($ids)->update(['sync_queued_at' => now(), 'sync_run_id' => $runId, 'sync_state' => 'queued', 'sync_progress' => null, 'sync_step' => null]);
         SyncSocialAccounts::dispatchAfterResponse($ids->all(), $runId, $since->toDateString());
 
         $this->showFetch = false;
@@ -401,7 +401,8 @@ class SocialMediaView extends Component
 
     /**
      * State of every account of a run for the progress list, e.g.
-     * [12 => ['state' => 'done', 'note' => '24 posts · 130 comments', 'warn' => false]].
+     * [12 => ['state' => 'running', 'note' => 'Posts and comments', 'warn' => false, 'progress' => 42]].
+     * progress: 0-100 while running, 100 once finished (whatever the outcome), 0 while waiting.
      */
     protected function runStates(?string $runId): array
     {
@@ -409,6 +410,11 @@ class SocialMediaView extends Component
             'state' => $a->sync_state ?? 'queued',
             'note' => $this->runNote($a),
             'warn' => $a->sync_state === 'done' && filled($a->last_sync_error),
+            'progress' => match ($a->sync_state) {
+                'done', 'failed', 'stopped' => 100,
+                'running' => (int) $a->sync_progress,
+                default => 0,
+            },
         ]])->all();
     }
 
@@ -421,7 +427,9 @@ class SocialMediaView extends Component
                 ->join(' · ') ?: 'Up to date',
             'failed' => Str::limit(Str::after((string) $a->last_sync_error, 'The fetch stopped: '), 80),
             'stopped' => 'Stopped before it finished',
-            // Waiting or in progress: say what kind of account it is.
+            // In progress: the step it's on.
+            'running' => $a->sync_step ?: 'Starting…',
+            // Waiting: say what kind of account it is.
             default => ['facebook' => 'Facebook Page', 'instagram' => 'Instagram account', 'ads' => 'Ad account'][$a->platform] ?? '',
         };
     }

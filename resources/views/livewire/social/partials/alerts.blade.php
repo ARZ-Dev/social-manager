@@ -4,7 +4,10 @@
     {{-- Background fetch: every 5 s ask the server for each account's state; it re-renders when all are done.
          A check that fails or hangs is skipped (see resources/js/app.js) and the next one tries again. --}}
     @if($syncing)
-        @php $finishedNow = collect($syncStates)->whereIn('state', ['done', 'failed', 'stopped'])->count(); @endphp
+        @php
+            $finishedNow = collect($syncStates)->whereIn('state', ['done', 'failed', 'stopped'])->count();
+            $percentNow = count($syncStates) ? (int) floor(collect($syncStates)->avg('progress')) : 0;
+        @endphp
         <div class="overflow-hidden rounded-xl border border-brand-200 bg-brand-50 dark:border-brand-500/20 dark:bg-brand-500/10"
             role="status" wire:key="sync-progress"
             x-on:sync-check-failed.window="busy = false"
@@ -16,6 +19,9 @@
                 timer: null,
                 get total() { return Object.keys(this.states).length },
                 get finished() { return Object.values(this.states).filter((s) => ['done', 'failed', 'stopped'].includes(s.state)).length },
+                // Whole run: the average of every account's progress.
+                get percent() { return this.total ? Math.floor(Object.values(this.states).reduce((sum, s) => sum + (s.progress ?? 0), 0) / this.total) : 0 },
+                progress(id) { return this.states[id]?.progress ?? 0 },
                 state(id) { return this.states[id]?.state ?? 'queued' },
                 note(id) { return this.states[id]?.note ?? '' },
                 warn(id) { return !!this.states[id]?.warn },
@@ -44,14 +50,17 @@
             <div class="flex flex-wrap items-center gap-3 p-4 text-sm text-brand-900 dark:text-brand-100">
                 <span class="size-5 shrink-0 animate-spin rounded-full border-2 border-brand-200 border-t-brand-600 dark:border-brand-500/30 dark:border-t-brand-300"></span>
                 <div class="min-w-[12rem] flex-1">
-                    <p class="font-semibold">
+                    <p class="flex flex-wrap items-baseline gap-x-2 font-semibold">
                         Fetching data from Meta…
-                        <span class="font-normal opacity-80"><span x-text="finished">{{ $finishedNow }}</span> of <span x-text="total">{{ count($syncStates) }}</span> done</span>
+                        <span class="font-normal opacity-80"><span x-text="finished">{{ $finishedNow }}</span> of <span x-text="total">{{ count($syncStates) }}</span> accounts done</span>
+                        <span class="ml-auto tabular-nums" x-text="`${percent}%`">{{ $percentNow }}%</span>
                     </p>
-                    <div class="mt-2 h-1.5 overflow-hidden rounded-full bg-brand-100 dark:bg-brand-500/20" aria-hidden="true">
+                    <div class="mt-2 h-1.5 overflow-hidden rounded-full bg-brand-100 dark:bg-brand-500/20"
+                        role="progressbar" aria-label="Fetch progress" aria-valuemin="0" aria-valuemax="100"
+                        aria-valuenow="{{ $percentNow }}" :aria-valuenow="percent">
                         <div class="h-full rounded-full bg-brand-500 transition-[width] duration-500"
-                            style="width: {{ count($syncStates) ? round($finishedNow / count($syncStates) * 100) : 0 }}%"
-                            :style="`width: ${total ? Math.round(finished / total * 100) : 0}%`"></div>
+                            style="width: {{ $percentNow }}%"
+                            :style="`width: ${percent}%`"></div>
                     </div>
                     <p class="mt-1.5 text-xs opacity-80">It runs in the background, so you can keep working or leave this page.</p>
                 </div>
@@ -72,12 +81,20 @@
             {{-- One row per account of the run, in fetch order --}}
             <ul id="sync-run-list" x-show="open" class="max-h-80 divide-y divide-brand-100 overflow-y-auto border-t border-brand-200 bg-white scrollbar-thin dark:divide-slate-800 dark:border-brand-500/20 dark:bg-slate-900">
                 @foreach($syncRun as $acc)
-                    @php $initial = $syncStates[$acc->id] ?? ['state' => 'queued', 'note' => '', 'warn' => false]; @endphp
+                    @php $initial = $syncStates[$acc->id] ?? ['state' => 'queued', 'note' => '', 'warn' => false, 'progress' => 0]; @endphp
                     <li class="flex items-center gap-3 px-4 py-2.5" wire:key="run-{{ $acc->id }}">
                         @include('livewire.social.partials.avatar', ['acc' => $acc, 'size' => 'sm'])
                         <div class="min-w-0 flex-1">
                             <p class="truncate text-sm font-medium text-slate-900 dark:text-white">{{ $acc->display_name }}</p>
                             <p class="truncate text-xs text-slate-500 dark:text-slate-400" x-text="note({{ $acc->id }})">{{ $initial['note'] }}</p>
+                            {{-- This account's own progress while it's being fetched --}}
+                            <div x-show="state({{ $acc->id }}) === 'running'" @if($initial['state'] !== 'running') x-cloak @endif
+                                class="mt-1.5 h-1 max-w-xs overflow-hidden rounded-full bg-brand-100 dark:bg-brand-500/20"
+                                role="progressbar" aria-label="{{ $acc->display_name }} progress" aria-valuemin="0" aria-valuemax="100"
+                                aria-valuenow="{{ $initial['progress'] }}" :aria-valuenow="progress({{ $acc->id }})">
+                                <div class="h-full rounded-full bg-brand-500 transition-[width] duration-500"
+                                    style="width: {{ $initial['progress'] }}%" :style="`width: ${progress({{ $acc->id }})}%`"></div>
+                            </div>
                         </div>
                         <span class="shrink-0">
                             <span x-show="state({{ $acc->id }}) === 'done' && !warn({{ $acc->id }})" @if($initial['state'] !== 'done' || $initial['warn']) x-cloak @endif class="badge badge-green">
@@ -87,7 +104,8 @@
                                 <x-icon name="alert-triangle" class="size-3.5" /> Done, with warnings
                             </span>
                             <span x-show="state({{ $acc->id }}) === 'running'" @if($initial['state'] !== 'running') x-cloak @endif class="badge badge-blue">
-                                <span class="size-3 animate-spin rounded-full border-2 border-brand-200 border-t-brand-600 dark:border-brand-500/30 dark:border-t-brand-300"></span> Fetching
+                                <span class="size-3 animate-spin rounded-full border-2 border-brand-200 border-t-brand-600 dark:border-brand-500/30 dark:border-t-brand-300"></span>
+                                Fetching <span class="tabular-nums" x-text="`${progress({{ $acc->id }})}%`">{{ $initial['progress'] }}%</span>
                             </span>
                             <span x-show="state({{ $acc->id }}) === 'queued'" @if($initial['state'] !== 'queued') x-cloak @endif class="badge badge-gray">
                                 <x-icon name="clock" class="size-3.5" /> Waiting

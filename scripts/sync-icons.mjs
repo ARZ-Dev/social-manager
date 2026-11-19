@@ -17,6 +17,10 @@ const SAFELIST = [
     'brand-facebook', 'brand-instagram', 'speakerphone', 'building', 'user-plus', 'shield-lock',
     'chart-area-line', 'photo', 'users-group', 'messages', 'list-check', 'refresh',
     'cash', 'eye', 'users', 'click', 'percentage', 'receipt',
+    // Google Ads, BSB and response times
+    'brand-google', 'brand-meta', 'message-2', 'brand-whatsapp', 'device-mobile-message', 'send', 'checks', 'hourglass',
+    'circle-x', 'target-arrow', 'coin', 'wallet', 'hand-click', 'heart', 'player-play', 'stopwatch', 'clock-pause',
+    'message-circle-exclamation', 'clock-hour-4', 'message-circle', 'clock',
 ];
 const SCAN = ['resources/views', 'app'];
 const SOURCE = 'node_modules/@tabler/icons/icons/outline';

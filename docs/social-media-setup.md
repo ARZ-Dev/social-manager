@@ -1,5 +1,8 @@
 # Social Media (Facebook, Instagram, Boosts) — setup
 
+> Google Ads, BSB (SMS & WhatsApp) and the Messages tab's response times are described in
+> [google-ads-and-bsb-setup.md](google-ads-and-bsb-setup.md).
+
 Each company connects through **its own Meta app**. The App ID and App Secret are
 entered per company in **Companies → Edit → Meta app**. The same instructions are
 shown in the form under "How do I get the App ID and App Secret?".

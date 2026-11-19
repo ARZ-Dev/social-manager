@@ -119,6 +119,88 @@
             </div>
         </section>
 
+        {{-- Google Ads --}}
+        @php $googleCallback = route('social.google.callback'); @endphp
+        <section class="grid gap-6 lg:grid-cols-3" id="google-ads">
+            <div>
+                <h2 class="flex items-center gap-2 text-base font-semibold"><x-icon name="brand-google" class="size-5 text-[#34A853]" /> Google Ads</h2>
+                <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">The company connects its Google Ads accounts through its own Google Cloud OAuth client and Google Ads developer token.</p>
+                <p class="mt-3">
+                    @if($google_ads_client_id && $hasGoogleSecret && $hasGoogleToken)
+                        <span class="badge badge-green"><x-icon name="circle-check" class="size-3.5" /> Client and token saved</span>
+                    @else
+                        <span class="badge badge-gray">Not set up</span>
+                    @endif
+                </p>
+            </div>
+            <div class="card p-5 lg:col-span-2">
+                <div class="grid gap-4 sm:grid-cols-2">
+                    <div class="sm:col-span-2">
+                        <label class="label" for="GoogleClientId">OAuth client ID</label>
+                        <input wire:model="google_ads_client_id" type="text" id="GoogleClientId" class="{{ $err('google_ads_client_id') }}" placeholder="1234567890-abc123.apps.googleusercontent.com" autocomplete="off" spellcheck="false">
+                        @error('google_ads_client_id') <p class="field-error">{{ $message }}</p> @enderror
+                    </div>
+                    <div x-data="{ show: false }">
+                        <label class="label" for="GoogleClientSecret">OAuth client secret</label>
+                        <div class="relative">
+                            <input wire:model="google_ads_client_secret" :type="show ? 'text' : 'password'" type="password" id="GoogleClientSecret" class="{{ $err('google_ads_client_secret') }} pr-10"
+                                placeholder="{{ $hasGoogleSecret ? 'Saved. Leave blank to keep it' : 'GOCSPX-…' }}" autocomplete="new-password" spellcheck="false">
+                            <button type="button" class="absolute inset-y-0 right-0 flex w-10 items-center justify-center text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                                x-on:click="show = !show" :aria-label="show ? 'Hide secret' : 'Show secret'">
+                                <span x-show="!show"><x-icon name="eye" class="size-4" /></span>
+                                <span x-show="show" x-cloak><x-icon name="eye-off" class="size-4" /></span>
+                            </button>
+                        </div>
+                        @error('google_ads_client_secret') <p class="field-error">{{ $message }}</p> @enderror
+                    </div>
+                    <div x-data="{ show: false }">
+                        <label class="label" for="GoogleDevToken">Developer token</label>
+                        <div class="relative">
+                            <input wire:model="google_ads_developer_token" :type="show ? 'text' : 'password'" type="password" id="GoogleDevToken" class="{{ $err('google_ads_developer_token') }} pr-10"
+                                placeholder="{{ $hasGoogleToken ? 'Saved. Leave blank to keep it' : '22-character token' }}" autocomplete="new-password" spellcheck="false">
+                            <button type="button" class="absolute inset-y-0 right-0 flex w-10 items-center justify-center text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                                x-on:click="show = !show" :aria-label="show ? 'Hide token' : 'Show token'">
+                                <span x-show="!show"><x-icon name="eye" class="size-4" /></span>
+                                <span x-show="show" x-cloak><x-icon name="eye-off" class="size-4" /></span>
+                            </button>
+                        </div>
+                        @error('google_ads_developer_token') <p class="field-error">{{ $message }}</p> @enderror
+                    </div>
+                    <p class="help sm:col-span-2 -mt-2">The secret and token are stored encrypted and never shown again. Clear the client ID to remove all three.</p>
+
+                    <div class="sm:col-span-2">
+                        <label class="label" for="GoogleCallbackUrl">Authorized redirect URI</label>
+                        <div class="flex gap-2" x-data="{ copied: false }">
+                            <input type="text" id="GoogleCallbackUrl" class="input font-mono text-xs" value="{{ $googleCallback }}" readonly>
+                            <button type="button" class="btn btn-secondary shrink-0" x-on:click="navigator.clipboard.writeText(@js($googleCallback)); copied = true; setTimeout(() => copied = false, 2000)">
+                                <span x-show="!copied"><x-icon name="copy" class="size-4" /></span>
+                                <span x-show="copied" x-cloak><x-icon name="check" class="size-4" /></span>
+                                <span x-text="copied ? 'Copied' : 'Copy'">Copy</span>
+                            </button>
+                        </div>
+                        <p class="help">Add this to the OAuth client under <strong>Authorized redirect URIs</strong>.</p>
+                        @if(!str_starts_with($googleCallback, 'https://') && !str_contains($googleCallback, 'localhost'))
+                            <p class="field-error">Google only accepts HTTPS addresses (except localhost). Serve the app over HTTPS before connecting.</p>
+                        @endif
+                    </div>
+
+                    <details class="group rounded-lg border border-slate-200 bg-slate-50 sm:col-span-2 dark:border-slate-800 dark:bg-slate-800/40">
+                        <summary class="flex cursor-pointer list-none items-center justify-between gap-2 px-4 py-3 text-sm font-medium text-slate-800 dark:text-slate-200">
+                            How do I get the OAuth client and developer token?
+                            <x-icon name="chevron-down" class="size-4 text-slate-400 transition-transform group-open:rotate-180" />
+                        </summary>
+                        <ol class="list-decimal space-y-2 px-4 pb-4 pl-8 text-sm text-slate-600 dark:text-slate-400">
+                            <li><strong>Developer token:</strong> sign in to a Google Ads <em>manager</em> account (create one free at <a href="https://ads.google.com/home/tools/manager-accounts/" target="_blank" rel="noopener" class="link">ads.google.com/home/tools/manager-accounts</a>), open <strong>Admin → API Center</strong>, accept the terms and copy the token. A new token only works with test accounts: click <strong>Apply for Basic access</strong> to use it with real accounts (Google reviews it in a few days).</li>
+                            <li><strong>Google Cloud project:</strong> at <a href="https://console.cloud.google.com/" target="_blank" rel="noopener" class="link">console.cloud.google.com</a>, create a project and enable the <strong>Google Ads API</strong> (APIs &amp; Services → Library).</li>
+                            <li><strong>Consent screen:</strong> under <strong>Google Auth Platform → Branding / Audience</strong>, name the app and set the publishing status to <strong>In production</strong>. While it says <em>Testing</em>, Google signs the company out after 7 days.</li>
+                            <li><strong>OAuth client:</strong> under <strong>Clients → Create client</strong>, choose <strong>Web application</strong>, add the redirect URI above, then copy the <strong>client ID</strong> and <strong>client secret</strong> here.</li>
+                            <li>Back on Social Media, choose <strong>Connect → Google Ads</strong> and sign in with a Google account that can open the company's Google Ads accounts (or their manager account).</li>
+                        </ol>
+                    </details>
+                </div>
+            </div>
+        </section>
+
         {{-- Branches --}}
         @can('branch-list')
             <section class="grid gap-6 lg:grid-cols-3">

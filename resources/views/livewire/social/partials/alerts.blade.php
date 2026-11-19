@@ -1,4 +1,4 @@
-@php $hasAlerts = $syncing || !$metaConfigured || $neverFetched || $expiringAds->isNotEmpty() || $warningAccounts->isNotEmpty(); @endphp
+@php $hasAlerts = $syncing || $metaMissing || $googleMissing || $neverFetched || $expiringAds->isNotEmpty() || $warningAccounts->isNotEmpty(); @endphp
 
 <div @class(['space-y-3', 'mb-6' => $hasAlerts])>
     {{-- Background fetch: every 5 s ask the server for each account's state; it re-renders when all are done.
@@ -51,7 +51,7 @@
                 <span class="size-5 shrink-0 animate-spin rounded-full border-2 border-brand-200 border-t-brand-600 dark:border-brand-500/30 dark:border-t-brand-300"></span>
                 <div class="min-w-[12rem] flex-1">
                     <p class="flex flex-wrap items-baseline gap-x-2 font-semibold">
-                        Fetching data from Meta…
+                        Fetching data…
                         <span class="font-normal opacity-80"><span x-text="finished">{{ $finishedNow }}</span> of <span x-text="total">{{ count($syncStates) }}</span> accounts done</span>
                         <span class="ml-auto tabular-nums" x-text="`${percent}%`">{{ $percentNow }}%</span>
                     </p>
@@ -100,7 +100,7 @@
                             <span x-show="state({{ $acc->id }}) === 'done' && !warn({{ $acc->id }})" @if($initial['state'] !== 'done' || $initial['warn']) x-cloak @endif class="badge badge-green">
                                 <x-icon name="circle-check" class="size-3.5" /> Done
                             </span>
-                            <span x-show="state({{ $acc->id }}) === 'done' && warn({{ $acc->id }})" @if($initial['state'] !== 'done' || !$initial['warn']) x-cloak @endif class="badge badge-yellow" title="Meta refused part of it: see the warnings panel after the fetch">
+                            <span x-show="state({{ $acc->id }}) === 'done' && warn({{ $acc->id }})" @if($initial['state'] !== 'done' || !$initial['warn']) x-cloak @endif class="badge badge-yellow" title="Part of it was refused: see the warnings panel after the fetch">
                                 <x-icon name="alert-triangle" class="size-3.5" /> Done, with warnings
                             </span>
                             <span x-show="state({{ $acc->id }}) === 'running'" @if($initial['state'] !== 'running') x-cloak @endif class="badge badge-blue">
@@ -123,15 +123,28 @@
         </div>
     @endif
 
-    @if(!$metaConfigured)
+    @if($metaMissing)
         <div class="alert alert-warning">
             <x-icon name="alert-triangle" class="size-5 shrink-0" />
             <div class="flex-1">
-                <p class="font-semibold">{{ $currentCompany->name }} has no Meta app yet</p>
-                <p class="mt-0.5 opacity-90">Each company connects through its own Meta App ID and App Secret.</p>
+                <p class="font-semibold">{{ $currentCompany->name }} has no Meta app</p>
+                <p class="mt-0.5 opacity-90">Its Facebook, Instagram and Meta ad accounts can't be fetched until the Meta App ID and App Secret are added.</p>
             </div>
             @can('company-edit')
                 <a href="{{ route('companies.edit', $currentCompany->id) }}#meta-app" wire:navigate class="btn btn-secondary btn-sm self-center">Set up</a>
+            @endcan
+        </div>
+    @endif
+
+    @if($googleMissing)
+        <div class="alert alert-warning">
+            <x-icon name="alert-triangle" class="size-5 shrink-0" />
+            <div class="flex-1">
+                <p class="font-semibold">{{ $currentCompany->name }} has no Google Ads developer token</p>
+                <p class="mt-0.5 opacity-90">Its Google Ads accounts can't be fetched until the developer token and OAuth client are added.</p>
+            </div>
+            @can('company-edit')
+                <a href="{{ route('companies.edit', $currentCompany->id) }}#google-ads" wire:navigate class="btn btn-secondary btn-sm self-center">Set up</a>
             @endcan
         </div>
     @endif
@@ -141,7 +154,7 @@
             <x-icon name="info-circle" class="size-5 shrink-0" />
             <div class="flex-1">
                 <p class="font-semibold">Accounts linked, no data yet</p>
-                <p class="mt-0.5 opacity-90">Pick the accounts and the period to load posts, insights, audience, messages and ads.</p>
+                <p class="mt-0.5 opacity-90">Pick the accounts and the period to load their posts, messages, ads and delivery data.</p>
             </div>
             @can('social-sync')
                 <button type="button" wire:click="openFetch" class="btn btn-primary btn-sm self-center">Fetch now</button>
@@ -170,7 +183,7 @@
             <summary class="flex cursor-pointer list-none items-center gap-3">
                 <x-icon name="alert-triangle" class="size-5 shrink-0" />
                 <span class="flex-1 font-semibold">
-                    Meta refused part of the last fetch on {{ $warningAccounts->count() }} {{ str('account')->plural($warningAccounts->count()) }}
+                    Part of the last fetch was refused on {{ $warningAccounts->count() }} {{ str('account')->plural($warningAccounts->count()) }}
                 </span>
                 <span class="text-xs font-medium underline-offset-2 group-open:hidden hover:underline">Show details</span>
                 <x-icon name="chevron-down" class="size-4 transition-transform group-open:rotate-180" />
@@ -186,7 +199,7 @@
                         </ul>
                     </div>
                 @endforeach
-                <p class="text-xs opacity-80">Usually a missing permission on the Meta app, or a metric Meta has retired. The rest of the data was still fetched.</p>
+                <p class="text-xs opacity-80">Usually a missing permission, expired access, or a metric the platform has retired. The rest of the data was still fetched.</p>
             </div>
         </details>
     @endif

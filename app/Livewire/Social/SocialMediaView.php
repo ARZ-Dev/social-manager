@@ -7,11 +7,17 @@ use App\Models\Company;
 use App\Models\Social\SocialAccount;
 use App\Models\Social\SocialAd;
 use App\Models\Social\SocialAdBreakdown;
+use App\Models\Social\SocialAdDailyStat;
+use App\Models\Social\SocialBulkMessage;
 use App\Models\Social\SocialConversation;
 use App\Models\Social\SocialDemographic;
 use App\Models\Social\SocialInsight;
+use App\Models\Social\SocialMessage;
 use App\Models\Social\SocialPost;
+use App\Services\Bsb\BsbClient;
+use App\Services\Bsb\BsbException;
 use App\Support\Num;
+use App\Support\ResponseTimes;
 use Carbon\CarbonPeriod;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Support\Carbon;
@@ -24,15 +30,22 @@ use Livewire\WithPagination;
 
 /**
  * Social Media page. Super Admins first pick a company; everyone else sees
- * their own. Shows the company's linked Facebook / Instagram / ad accounts
- * and the data fetched from them: overview, posts, audience, messages, ads.
+ * their own. Shows the company's linked accounts (Facebook, Instagram, Meta and
+ * Google ad accounts, BSB) and the data fetched from them: overview, posts,
+ * audience, messages with response times, ads, and SMS / WhatsApp delivery.
  */
 class SocialMediaView extends Component
 {
     use AuthorizesRequests, WithPagination;
 
-    public const TABS = ['overview', 'posts', 'audience', 'messages', 'ads'];
+    public const TABS = ['overview', 'posts', 'audience', 'messages', 'ads', 'sms'];
     public const PERIODS = [7, 30, 90];
+
+    /** Tabs that show a 7 / 30 / 90 days switch. */
+    public const PERIOD_TABS = ['overview', 'messages', 'sms'];
+
+    /** Google Ads daily chart: metric => label. */
+    public const GOOGLE_TREND_METRICS = ['spend' => 'Cost', 'clicks' => 'Clicks', 'impressions' => 'Impressions', 'conversions' => 'Conversions'];
 
     /** A fetch with no sign of life for this long is treated as dead (e.g. the server restarted). */
     public const SYNC_STALE_MINUTES = 10;
@@ -61,11 +74,29 @@ class SocialMediaView extends Component
     #[Url(as: 'platform')]
     public string $postPlatform = ''; // Posts tab: '' | facebook | instagram
 
+    #[Url(as: 'ads')]
+    public string $adPlatform = ''; // Ads tab: meta | google ('' = the first the company has)
+
+    #[Url(as: 'status')]
+    public string $smsStatus = ''; // SMS tab: '' | delivered | progress | failed
+
+    #[Url(as: 'route')]
+    public string $smsRoute = ''; // SMS tab: '' | sms | wp
+
+    public string $smsSearch = '';
     public string $companySearch = '';
     public string $chatSearch = '';
+    public string $chatFilter = ''; // Messages tab: '' | awaiting
     public string $audienceMetric = 'follower_demographics';
     public string $breakdown = 'age_gender';
     public string $adSort = 'spend';
+    public string $googleTrend = 'spend';
+
+    // "Connect BSB" dialog
+    public bool $showBsbConnect = false;
+    public string $bsbName = '';
+    public string $bsbKey = '';
+    public string $bsbSecret = '';
 
     public ?int $openPost = null;
     public ?int $openConversation = null;
@@ -108,7 +139,8 @@ class SocialMediaView extends Component
         abort_unless(auth()->user()->canAccessAllCompanies(), 403);
 
         $this->company = Company::visibleTo(auth()->user())->findOrFail($id)->id;
-        $this->reset('account', 'trendMetric', 'postSearch', 'chatSearch', 'companySearch', 'openPost', 'openConversation', 'breakdownAd');
+        $this->reset('account', 'trendMetric', 'postSearch', 'chatSearch', 'companySearch', 'openPost', 'openConversation', 'breakdownAd',
+            'adPlatform', 'chatFilter', 'smsStatus', 'smsRoute', 'smsSearch');
         $this->syncing = $this->runningSync()->exists();
         $this->resetPage();
     }
@@ -118,7 +150,8 @@ class SocialMediaView extends Component
     {
         abort_unless(auth()->user()->canAccessAllCompanies(), 403);
 
-        $this->reset('company', 'account', 'trendMetric', 'postSearch', 'chatSearch', 'openPost', 'openConversation', 'breakdownAd', 'syncing');
+        $this->reset('company', 'account', 'trendMetric', 'postSearch', 'chatSearch', 'openPost', 'openConversation', 'breakdownAd', 'syncing',
+            'adPlatform', 'chatFilter', 'smsStatus', 'smsRoute', 'smsSearch');
         $this->tab = 'overview';
         $this->resetPage();
     }
@@ -143,11 +176,69 @@ class SocialMediaView extends Component
         }
 
         // Jump to a tab that has data for this kind of account.
-        if ($acc?->platform === SocialAccount::ADS) {
+        if (in_array($acc?->platform, SocialAccount::AD_PLATFORMS, true)) {
             $this->tab = 'ads';
-        } elseif ($acc && $this->tab === 'ads') {
+            $this->adPlatform = $acc->platform === SocialAccount::GOOGLE_ADS ? 'google' : 'meta';
+        } elseif ($acc?->platform === SocialAccount::BSB) {
+            $this->tab = 'sms';
+        } elseif ($acc && in_array($this->tab, ['ads', 'sms'], true)) {
             $this->tab = 'overview';
         }
+        $this->syncBreakdownChoice();
+    }
+
+    /** Ads tab: Meta or Google ad accounts. */
+    public function setAdPlatform($platform)
+    {
+        $this->adPlatform = in_array($platform, ['meta', 'google'], true) ? $platform : '';
+        $this->reset('breakdownAd');
+        $this->resetPage();
+
+        // Drop an account filter that belongs to the other platform.
+        $wanted = $this->adPlatform === 'google' ? SocialAccount::GOOGLE_ADS : SocialAccount::ADS;
+        if ($this->account && $this->accountsQuery()->whereKey($this->account)->value('platform') !== $wanted) {
+            $this->account = '';
+        }
+        $this->syncBreakdownChoice();
+    }
+
+    /** Keep the breakdown on one the current ad platform offers. */
+    protected function syncBreakdownChoice(): void
+    {
+        $options = $this->adPlatform === 'google' ? config('google_ads.breakdowns') : config('meta.ad_breakdowns');
+        if (!array_key_exists($this->breakdown, $options)) {
+            $this->breakdown = array_key_first($options);
+        }
+    }
+
+    public function setGoogleTrend($metric)
+    {
+        $this->googleTrend = array_key_exists($metric, self::GOOGLE_TREND_METRICS) ? $metric : 'spend';
+    }
+
+    /** Messages tab: '' = all conversations, 'awaiting' = the customer is waiting for a reply. */
+    public function setChatFilter($filter = '')
+    {
+        $this->chatFilter = $filter === 'awaiting' ? 'awaiting' : '';
+        $this->resetPage();
+    }
+
+    /** SMS tab filters. */
+    public function setSmsStatus($status = '')
+    {
+        $this->smsStatus = in_array($status, ['delivered', 'progress', 'failed'], true) ? $status : '';
+        $this->resetPage();
+    }
+
+    public function setSmsRoute($route = '')
+    {
+        $this->smsRoute = array_key_exists($route, SocialBulkMessage::ROUTES) ? $route : '';
+        $this->resetPage();
+    }
+
+    public function updatedSmsSearch()
+    {
+        $this->resetPage();
     }
 
     public function setDays($days)
@@ -168,7 +259,8 @@ class SocialMediaView extends Component
 
     public function setBreakdown($name)
     {
-        $this->breakdown = array_key_exists($name, config('meta.ad_breakdowns')) ? $name : 'age_gender';
+        $this->breakdown = (string) $name;
+        $this->syncBreakdownChoice();
     }
 
     public function toggleAdBreakdown($id)
@@ -252,7 +344,7 @@ class SocialMediaView extends Component
 
         $ids = $this->orderedAccountIds();
         if ($ids->isEmpty()) {
-            $this->dispatch('swal:error', ['title' => 'Nothing to fetch', 'text' => 'Connect a Facebook Page first.']);
+            $this->dispatch('swal:error', ['title' => 'Nothing to fetch', 'text' => 'Connect an account first.']);
             return;
         }
 
@@ -318,14 +410,95 @@ class SocialMediaView extends Component
             ? Carbon::parse($this->fetchFrom)->startOfDay()
             : now()->subDays((int) $this->fetchPeriod)->startOfDay();
         // Keep Pages before their Instagram accounts and ad accounts.
-        $ids = $all->filter(fn ($id) => in_array((string) $id, $this->fetchAccounts, true))->values();
+        $this->queueFetch($all->filter(fn ($id) => in_array((string) $id, $this->fetchAccounts, true))->values(), $since);
+
+        $this->showFetch = false;
+    }
+
+    /** Fetch these accounts in the background, right after this request answers. */
+    protected function queueFetch(Collection $ids, Carbon $since): void
+    {
         $runId = (string) Str::uuid();
 
         SocialAccount::whereKey($ids)->update(['sync_queued_at' => now(), 'sync_run_id' => $runId, 'sync_state' => 'queued', 'sync_progress' => null, 'sync_step' => null]);
         SyncSocialAccounts::dispatchAfterResponse($ids->all(), $runId, $since->toDateString());
 
-        $this->showFetch = false;
         $this->syncing = true;
+    }
+
+    // ------------------------------------------------------------ Connect BSB
+
+    public function openBsbConnect()
+    {
+        $this->authorize('social-connect');
+        $this->reset('bsbName', 'bsbKey', 'bsbSecret');
+        $this->resetValidation();
+        $this->showBsbConnect = true;
+    }
+
+    public function closeBsbConnect()
+    {
+        $this->showBsbConnect = false;
+        $this->reset('bsbKey', 'bsbSecret');
+    }
+
+    /**
+     * Link a BSB account with its API key and secret (from BSB's MANAGE APIs page).
+     * The credentials are checked by reading the balance, then today's messages
+     * are fetched straight away.
+     */
+    public function connectBsb()
+    {
+        $this->authorize('social-connect');
+        $company = $this->currentCompany();
+        abort_unless($company, 404);
+
+        $this->bsbKey = trim($this->bsbKey);
+        $this->bsbSecret = trim($this->bsbSecret);
+        $this->validate([
+            'bsbName' => ['nullable', 'string', 'max:100'],
+            'bsbKey' => ['required', 'string', 'max:255'],
+            'bsbSecret' => ['required', 'string', 'max:255'],
+        ], [], ['bsbName' => 'name', 'bsbKey' => 'API key', 'bsbSecret' => 'API secret']);
+
+        try {
+            $balance = (new BsbClient($this->bsbKey, $this->bsbSecret))->balance();
+        } catch (BsbException $e) {
+            $this->addError('bsbKey', 'BSB refused these credentials: ' . $e->getMessage());
+            return;
+        }
+
+        $fingerprint = SocialAccount::bsbFingerprint($this->bsbKey);
+        $existing = SocialAccount::where('company_id', $company->id)->where('platform', SocialAccount::BSB)->where('external_id', $fingerprint)->first();
+
+        $account = SocialAccount::updateOrCreate(
+            ['company_id' => $company->id, 'platform' => SocialAccount::BSB, 'external_id' => $fingerprint],
+            [
+                'name' => trim($this->bsbName) ?: ($existing?->name ?? 'BSB'),
+                'access_token' => json_encode(['api_key' => $this->bsbKey, 'api_secret' => $this->bsbSecret]),
+                'meta' => array_merge($existing?->meta ?? [], [
+                    'sms_balance' => $balance['sms'],
+                    'wp_balance' => $balance['wp'],
+                    'balance_at' => now()->toIso8601String(),
+                ]),
+                'connected_by' => auth()->id(),
+                'last_sync_error' => null,
+            ]
+        );
+
+        $this->closeBsbConnect();
+        $this->tab = 'sms';
+        $this->account = '';
+        $this->resetPage();
+
+        if (auth()->user()->can('social-sync') && !$this->runningSync()->exists()) {
+            $this->queueFetch(collect([$account->id]), now()->startOfDay());
+        }
+
+        $this->dispatch('swal:success', [
+            'title' => $existing ? 'BSB account updated' : 'BSB account connected',
+            'text' => 'Messages sent today are being loaded. From now on new messages are picked up every ' . config('bsb.poll_minutes') . ' minutes.',
+        ]);
     }
 
     /** Stop the running fetch. What was saved so far is kept. */
@@ -345,7 +518,7 @@ class SocialMediaView extends Component
     protected function orderedAccountIds(): Collection
     {
         return $this->accountsQuery()
-            ->orderByRaw("FIELD(platform, 'facebook', 'instagram', 'ads')")
+            ->orderedByPlatform()
             ->orderBy('id')
             ->pluck('id');
     }
@@ -371,7 +544,7 @@ class SocialMediaView extends Component
             $this->dispatch($warned ? 'swal:warning' : 'swal:success', [
                 'title' => $warned ? 'Fetched, with warnings' : 'Data updated',
                 'text' => $warned
-                    ? "Meta refused part of the fetch on $warned " . str('account')->plural($warned) . '. The warnings panel lists what.'
+                    ? "Part of the fetch was refused on $warned " . str('account')->plural($warned) . '. The warnings panel lists what.'
                     : 'All accounts are up to date.',
             ]);
         }
@@ -394,7 +567,7 @@ class SocialMediaView extends Component
 
         return $this->accountsQuery()
             ->where('sync_run_id', $runId)
-            ->orderByRaw("FIELD(platform, 'facebook', 'instagram', 'ads')")
+            ->orderedByPlatform()
             ->orderBy('id')
             ->get();
     }
@@ -421,7 +594,7 @@ class SocialMediaView extends Component
     protected function runNote(SocialAccount $a): string
     {
         return match ($a->sync_state) {
-            'done' => collect(['posts', 'comments', 'conversations', 'ads'])
+            'done' => collect(['posts', 'comments', 'conversations', 'ads', 'campaigns', 'new messages', 'status updates'])
                 ->filter(fn ($k) => ($a->meta['last_fetch_counts'][$k] ?? 0) > 0)
                 ->map(fn ($k) => number_format($a->meta['last_fetch_counts'][$k]) . ' ' . ($a->meta['last_fetch_counts'][$k] == 1 ? Str::singular($k) : $k))
                 ->join(' · ') ?: 'Up to date',
@@ -430,7 +603,10 @@ class SocialMediaView extends Component
             // In progress: the step it's on.
             'running' => $a->sync_step ?: 'Starting…',
             // Waiting: say what kind of account it is.
-            default => ['facebook' => 'Facebook Page', 'instagram' => 'Instagram account', 'ads' => 'Ad account'][$a->platform] ?? '',
+            default => [
+                'facebook' => 'Facebook Page', 'instagram' => 'Instagram account', 'ads' => 'Meta ad account',
+                'google_ads' => 'Google Ads account', 'bsb' => 'BSB account',
+            ][$a->platform] ?? '',
         };
     }
 
@@ -496,23 +672,36 @@ class SocialMediaView extends Component
         }
 
         $accounts = $this->accountsQuery()
-            ->orderByRaw("FIELD(platform, 'facebook', 'instagram', 'ads')")
+            ->orderedByPlatform()
             ->orderBy('name')
             ->get();
-        $social = [SocialAccount::FACEBOOK, SocialAccount::INSTAGRAM];
-        $hasSocial = $accounts->whereIn('platform', $social)->isNotEmpty();
-        $hasAds = $accounts->where('platform', SocialAccount::ADS)->isNotEmpty();
+        $platforms = $accounts->pluck('platform')->unique();
+        $hasSocial = $platforms->intersect(SocialAccount::SOCIAL)->isNotEmpty();
+        $hasMetaAds = $platforms->contains(SocialAccount::ADS);
+        $hasGoogleAds = $platforms->contains(SocialAccount::GOOGLE_ADS);
+        $hasAds = $hasMetaAds || $hasGoogleAds;
+        $hasBsb = $platforms->contains(SocialAccount::BSB);
 
         // Keep the tab on something this company has.
-        if (!$hasSocial && $hasAds) {
-            $this->tab = 'ads';
-        } elseif (!$hasAds && $this->tab === 'ads') {
-            $this->tab = 'overview';
+        $available = array_keys(array_filter([
+            'overview' => $hasSocial, 'posts' => $hasSocial, 'audience' => $hasSocial, 'messages' => $hasSocial,
+            'ads' => $hasAds, 'sms' => $hasBsb,
+        ]));
+        if ($available && !in_array($this->tab, $available, true)) {
+            $this->tab = $available[0];
+        }
+        // ...and the Ads tab on an ad platform it has.
+        if ($this->adPlatform === 'google' ? !$hasGoogleAds : ($this->adPlatform === 'meta' ? !$hasMetaAds : true)) {
+            $this->adPlatform = $hasMetaAds ? 'meta' : ($hasGoogleAds ? 'google' : '');
+            $this->syncBreakdownChoice();
         }
 
         $scoped = $this->account ? $accounts->where('id', (int) $this->account)->values() : $accounts;
-        $socialIds = $scoped->whereIn('platform', $social)->pluck('id');
+        $socialIds = $scoped->whereIn('platform', SocialAccount::SOCIAL)->pluck('id');
         $adIds = $scoped->where('platform', SocialAccount::ADS)->pluck('id');
+        $googleIds = $scoped->where('platform', SocialAccount::GOOGLE_ADS)->pluck('id');
+        $bsbIds = $scoped->where('platform', SocialAccount::BSB)->pluck('id');
+        $hasMetaAccounts = $platforms->intersect(SocialAccount::META)->isNotEmpty();
 
         $data = [
             'mode' => 'company',
@@ -522,7 +711,14 @@ class SocialMediaView extends Component
             'selectedAccount' => $this->account ? $accounts->firstWhere('id', (int) $this->account) : null,
             'hasSocial' => $hasSocial,
             'hasAds' => $hasAds,
+            'hasMetaAds' => $hasMetaAds,
+            'hasGoogleAds' => $hasGoogleAds,
+            'hasBsb' => $hasBsb,
             'metaConfigured' => $company->hasMetaApp(),
+            'googleConfigured' => $company->hasGoogleAdsApp(),
+            // A missing app only matters once accounts depend on it.
+            'metaMissing' => $hasMetaAccounts && !$company->hasMetaApp(),
+            'googleMissing' => $hasGoogleAds && !$company->hasGoogleAdsApp(),
             'lastFetched' => $accounts->max('last_synced_at'),
             'neverFetched' => $accounts->isNotEmpty() && $accounts->every(fn ($a) => !$a->last_synced_at),
             'warningAccounts' => $accounts->filter(fn ($a) => $a->last_sync_error)->values(),
@@ -540,7 +736,8 @@ class SocialMediaView extends Component
                 'posts' => $this->postsData($scoped->whereIn('id', $socialIds)->values(), $accounts),
                 'audience' => $this->audienceData($scoped->whereIn('id', $socialIds)->values()),
                 'messages' => $this->messagesData($socialIds),
-                'ads' => $this->adsData($adIds),
+                'ads' => $this->adPlatform === 'google' ? $this->googleAdsData($googleIds) : $this->adsData($adIds),
+                'sms' => $this->bulkData($bsbIds),
             };
 
             if ($this->openPost) {
@@ -793,9 +990,26 @@ class SocialMediaView extends Component
         ];
     }
 
+    /**
+     * Conversations with their response times over the period: totals, a
+     * distribution, one row per account, and the conversations still waiting.
+     */
     protected function messagesData(Collection $socialIds): array
     {
         $term = trim($this->chatSearch);
+        $since = now()->startOfDay()->subDays($this->days - 1);
+
+        $messages = SocialMessage::query()
+            ->join('social_conversations', 'social_conversations.id', '=', 'social_messages.social_conversation_id')
+            ->whereIn('social_conversations.social_account_id', $socialIds)
+            ->where('social_messages.sent_at', '>=', $since)
+            ->get(['social_messages.social_conversation_id', 'social_messages.from_page', 'social_messages.sent_at', 'social_conversations.social_account_id']);
+        $stats = ResponseTimes::perConversation($messages, $since);
+        $accountOf = $messages->pluck('social_account_id', 'social_conversation_id');
+        $awaitingIds = array_keys(array_filter($stats, fn ($c) => $c['awaitingSince'] !== null));
+
+        $socialAccounts = SocialAccount::whereIn('id', $socialIds)->orderedByPlatform()->orderBy('name')->get();
+
         $chat = $this->openConversation
             ? SocialConversation::with(['account', 'messages' => fn ($q) => $q->orderBy('sent_at')])
                 ->whereIn('social_account_id', $socialIds)
@@ -805,6 +1019,7 @@ class SocialMediaView extends Component
         return [
             'conversations' => SocialConversation::with('account')
                 ->whereIn('social_account_id', $socialIds)
+                ->when($this->chatFilter === 'awaiting', fn ($q) => $q->whereKey($awaitingIds))
                 ->when($term !== '', fn ($q) => $q->where(fn ($w) => $w
                     ->where('participant_name', 'like', '%' . $term . '%')
                     ->orWhere('snippet', 'like', '%' . $term . '%')))
@@ -812,6 +1027,135 @@ class SocialMediaView extends Component
                 ->paginate(20),
             'chat' => $chat,
             'chatDays' => $chat ? $chat->messages->groupBy(fn ($m) => $m->sent_at?->toDateString() ?? '') : collect(),
+            'responseStats' => $stats,
+            'responseSummary' => ResponseTimes::summary($stats),
+            'responseByAccount' => $socialAccounts->map(fn ($acc) => [
+                'account' => $acc,
+                'summary' => ResponseTimes::summary(array_filter($stats, fn ($id) => (int) ($accountOf[$id] ?? 0) === $acc->id, ARRAY_FILTER_USE_KEY)),
+            ])->filter(fn ($row) => $row['summary']['conversations'] > 0 || $row['summary']['responses'] > 0)->values(),
+        ];
+    }
+
+    /**
+     * Google Ads: totals and campaigns over the period of the last fetch, the
+     * account's results per day, and campaign results by audience segment.
+     */
+    protected function googleAdsData(Collection $ids): array
+    {
+        $adAccounts = SocialAccount::whereIn('id', $ids)->orderBy('name')->get();
+        $currencies = $adAccounts->pluck('meta.currency')->filter()->unique();
+        $since = $adAccounts->pluck('meta.last_fetch_since')->filter()->min();
+
+        $campaigns = SocialAd::with('account')->whereIn('social_account_id', $ids);
+        match ($this->adSort) {
+            'newest' => $campaigns->latest('started_at'),
+            'clicks' => $campaigns->orderByDesc('clicks'),
+            'conversions' => $campaigns->orderByDesc('conversions'),
+            default => $campaigns->orderByDesc('spend'),
+        };
+
+        $breakdownAd = $this->breakdownAd ? SocialAd::whereIn('social_account_id', $ids)->find($this->breakdownAd) : null;
+        $rows = SocialAdBreakdown::whereIn('social_account_id', $ids)->where('breakdown', $this->breakdown);
+        if ($breakdownAd) {
+            $rows->where('social_account_id', $breakdownAd->social_account_id)->where('ad_external_id', $breakdownAd->external_id);
+        }
+        $rows->selectRaw('segment, SUM(spend) as spend, SUM(impressions) as impressions, SUM(clicks) as clicks, SUM(conversions) as conversions')
+            ->groupBy('segment');
+        $this->breakdown === 'age'
+            ? $rows->orderBy('segment')
+            : $rows->orderByDesc('spend')->orderByDesc('impressions');
+
+        // Daily chart over the fetch period: one line per account, days without results count as 0.
+        $from = $since ? Carbon::parse($since) : now()->subDays(29);
+        $dates = collect(CarbonPeriod::create($from->startOfDay(), now()->startOfDay()))->map(fn ($d) => $d->toDateString());
+        $daily = SocialAdDailyStat::whereIn('social_account_id', $ids)->where('date', '>=', $from->toDateString())->get();
+        $metric = $this->googleTrend;
+        $series = $adAccounts->map(function ($acc) use ($daily, $dates, $metric) {
+            $byDate = $daily->where('social_account_id', $acc->id)->keyBy(fn ($r) => $r->date->toDateString());
+            $values = $dates->map(fn ($d) => isset($byDate[$d]) ? round((float) $byDate[$d]->$metric, 2) : 0);
+            return ['name' => $acc->display_name, 'platform' => $acc->platform, 'data' => $values->all(), 'summary' => round($values->sum(), 2)];
+        })->filter(fn ($s) => $daily->isNotEmpty())->values();
+
+        return [
+            'gCampaigns' => $campaigns->paginate(15),
+            'gTotals' => SocialAd::whereIn('social_account_id', $ids)
+                ->selectRaw('SUM(spend) as spend, SUM(impressions) as impressions, SUM(clicks) as clicks, SUM(conversions) as conversions,'
+                    . " SUM(conversion_value) as conversion_value, SUM(interactions) as interactions, SUM(engagements) as engagements,"
+                    . " SUM(video_views) as video_views, COUNT(*) as total, SUM(status = 'ENABLED') as active")
+                ->first(),
+            'currency' => $currencies->count() === 1 ? $currencies->first() : null,
+            'mixedCurrency' => $currencies->count() > 1,
+            'adsSince' => $since,
+            'breakdownAdModel' => $breakdownAd,
+            'breakdownRows' => $rows->limit(50)->get(),
+            'gTrend' => [
+                'label' => self::GOOGLE_TREND_METRICS[$metric],
+                'agg' => 'sum',
+                'dates' => $dates->all(),
+                'series' => $series->all(),
+            ],
+        ];
+    }
+
+    /**
+     * BSB messages first seen in the period: the delivery funnel, per channel,
+     * per day and per country, and the message list with its filters.
+     */
+    protected function bulkData(Collection $ids): array
+    {
+        $since = now()->startOfDay()->subDays($this->days - 1);
+        $inPeriod = fn () => SocialBulkMessage::whereIn('social_account_id', $ids)->where('first_seen_at', '>=', $since);
+        // Funnel groups: delivered, still on the way (sent / pending / unknown), failed.
+        $group = "CASE WHEN status = 'DELIVERED' THEN 'delivered' WHEN status = 'FAILED' THEN 'failed' ELSE 'progress' END";
+
+        $byRoute = $inPeriod()->selectRaw("route, $group as grp, COUNT(*) as n")->groupBy('route', 'grp')->get();
+        $funnel = fn (Collection $rows) => [
+            'total' => (int) $rows->sum('n'),
+            'delivered' => (int) $rows->where('grp', 'delivered')->sum('n'),
+            'progress' => (int) $rows->where('grp', 'progress')->sum('n'),
+            'failed' => (int) $rows->where('grp', 'failed')->sum('n'),
+        ];
+
+        $dates = collect(CarbonPeriod::create($since, now()->startOfDay()))->map(fn ($d) => $d->toDateString());
+        $daily = $inPeriod()->selectRaw("DATE(first_seen_at) as d, $group as grp, COUNT(*) as n")->groupBy('d', 'grp')->get()
+            ->groupBy('grp')->map(fn ($rows) => $rows->pluck('n', 'd'));
+        $line = fn (string $grp, string $name) => [
+            'name' => $name, 'platform' => $grp,
+            'data' => $dates->map(fn ($d) => (int) ($daily[$grp][$d] ?? 0))->all(),
+            'summary' => (int) collect($daily[$grp] ?? [])->sum(),
+        ];
+
+        $term = preg_replace('/\D/', '', $this->smsSearch);
+        $list = $inPeriod()->with('account')
+            ->when($this->smsRoute, fn ($q) => $q->where('route', $this->smsRoute))
+            ->when($this->smsStatus === 'delivered', fn ($q) => $q->where('status', 'DELIVERED'))
+            ->when($this->smsStatus === 'failed', fn ($q) => $q->where('status', 'FAILED'))
+            ->when($this->smsStatus === 'progress', fn ($q) => $q->where(fn ($w) => $w->whereNull('status')->orWhereNotIn('status', SocialBulkMessage::FINAL)))
+            ->when($term !== '', fn ($q) => $q->where('recipient', 'like', '%' . $term . '%'))
+            ->latest('first_seen_at')
+            ->orderByDesc('id');
+
+        $bsbAccounts = SocialAccount::whereIn('id', $ids)->orderBy('name')->get();
+        $staleAfter = now()->subMinutes(max(30, 3 * (int) config('bsb.poll_minutes')));
+
+        return [
+            'bsbAccounts' => $bsbAccounts,
+            'smsFunnel' => $funnel($byRoute),
+            'smsByRoute' => collect(SocialBulkMessage::ROUTES)->map(fn ($label, $route) => ['label' => $label] + $funnel($byRoute->where('route', $route)))
+                ->filter(fn ($r) => $r['total'] > 0),
+            'smsTrend' => [
+                'label' => 'Messages',
+                'agg' => 'sum',
+                'dates' => $dates->all(),
+                'series' => [$line('delivered', 'Delivered'), $line('progress', 'On the way'), $line('failed', 'Failed')],
+                'colors' => ['#16A34A', '#94A3B8', '#DC2626'],
+            ],
+            'smsCountries' => $inPeriod()->selectRaw("country, COUNT(*) as n, SUM(status = 'DELIVERED') as delivered, SUM(status = 'FAILED') as failed")
+                ->groupBy('country')->orderByDesc('n')->limit(10)->get(),
+            'smsMessages' => $list->paginate(25),
+            'smsLogStart' => SocialBulkMessage::whereIn('social_account_id', $ids)->min('first_seen_at'),
+            // Automatic checks look stopped when no account was checked recently.
+            'smsChecksStale' => $bsbAccounts->isNotEmpty() && $bsbAccounts->every(fn ($a) => !$a->last_synced_at || $a->last_synced_at->lt($staleAfter)),
         ];
     }
 

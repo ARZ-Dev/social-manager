@@ -1,5 +1,5 @@
 @php
-    $groupLabels = ['facebook' => 'Facebook Pages', 'instagram' => 'Instagram accounts', 'ads' => 'Ad accounts'];
+    $groupLabels = ['facebook' => 'Facebook Pages', 'instagram' => 'Instagram accounts', 'ads' => 'Meta ad accounts', 'google_ads' => 'Google Ads accounts', 'bsb' => 'BSB (SMS & WhatsApp)'];
     $selected = collect($fetchAccounts)->map(fn ($id) => (int) $id);
     $groups = $accounts->groupBy('platform');
     $allOn = $accounts->every(fn ($a) => $selected->contains($a->id));
@@ -9,7 +9,7 @@
         : now()->subDays((int) $fetchPeriod);
 @endphp
 
-<x-ui.modal close="closeFetch" title="Fetch data from Meta" size="2xl">
+<x-ui.modal close="closeFetch" title="Fetch data" size="2xl">
     <form id="fetch-form" wire:submit="startFetch" class="space-y-6" novalidate>
         {{-- Accounts, grouped by platform --}}
         <fieldset>
@@ -92,6 +92,9 @@
                     <span class="font-medium text-slate-700 dark:text-slate-300">{{ $periodStart->format('j M Y') }} → today.</span>
                 @endif
                 Longer periods take longer. Audience demographics are always the latest snapshot, and ad results cover the period you pick.
+                @if($groups->has('bsb'))
+                    BSB only reports today's messages, whatever the period: older ones come from the automatic checks.
+                @endif
             </p>
         </fieldset>
     </form>

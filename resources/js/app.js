@@ -92,6 +92,7 @@ window.exportTable = (table, filename = 'export') => {
 const PLATFORM_COLORS = {
     facebook: ['#1877F2', '#0B5FCC', '#5B9BF5'],
     instagram: ['#E1306C', '#A1338F', '#F77737'],
+    google_ads: ['#34A853', '#188038', '#81C995'],
 };
 
 function chartTheme() {
@@ -135,7 +136,8 @@ function trendOptions(cfg) {
             axisTicks: { show: false },
         },
         yaxis: { labels: { formatter: (v) => compact(v) } },
-        colors: seriesColors(cfg.series),
+        // Fixed colours when the series mean something (e.g. delivered / failed), platform colours otherwise.
+        colors: cfg.colors || seriesColors(cfg.series),
         // Different line styles too, so series aren't told apart by colour alone.
         stroke: { curve: 'smooth', width: 2, dashArray: cfg.series.map((_, i) => [0, 6, 2][i % 3]) },
         fill: { type: 'gradient', gradient: { opacityFrom: 0.25, opacityTo: 0.02 } },

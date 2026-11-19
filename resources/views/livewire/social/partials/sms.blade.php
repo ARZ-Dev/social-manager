@@ -4,7 +4,8 @@
     $rate = $pct($f['delivered'], $f['total']);
     $statusBadge = fn ($status) => match ($status) {
         'DELIVERED' => ['Delivered', 'badge-green'],
-        'FAILED' => ['Failed', 'badge-red'],
+        'READ' => ['Read', 'badge-green'],
+        'FAILED', 'UNDELIVERED', 'REJECTED', 'EXPIRED' => [ucfirst(strtolower($status)), 'badge-red'],
         'SENT' => ['Sent', 'badge-blue'],
         'PENDING' => ['Pending', 'badge-yellow'],
         default => [$status ? ucfirst(strtolower($status)) : 'Unknown', 'badge-gray'],
@@ -77,7 +78,7 @@
                 @if($label === 'Messages sent')
                     Last {{ $days }} days, SMS and WhatsApp
                 @elseif($label === 'Delivered')
-                    Delivery rate
+                    Delivery rate{{ $f['read'] ? ' · ' . number_format($f['read']) . ' read on WhatsApp' : '' }}
                 @elseif($label === 'On the way')
                     Sent or pending, not confirmed yet
                 @else
@@ -127,7 +128,7 @@
             <div class="card-header">
                 <div>
                     <h2 class="card-title">By channel</h2>
-                    <p class="text-xs text-slate-500 dark:text-slate-400">Sent → delivered</p>
+                    <p class="text-xs text-slate-500 dark:text-slate-400">Sent → delivered → read (WhatsApp)</p>
                 </div>
             </div>
             <div class="space-y-5 p-5">
@@ -148,6 +149,9 @@
                         </div>
                         <p class="mt-1.5 text-xs text-slate-500 dark:text-slate-400">
                             <span class="font-semibold text-green-700 dark:text-green-400">{{ $pct($r['delivered'], $r['total']) }}% delivered</span>
+                            @if($r['read'])
+                                · {{ $pct($r['read'], $r['total']) }}% read
+                            @endif
                             · {{ $pct($r['failed'], $r['total']) }}% failed
                         </p>
                     </div>

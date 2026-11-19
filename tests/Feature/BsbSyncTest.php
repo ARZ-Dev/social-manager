@@ -18,6 +18,9 @@ class BsbSyncTest extends TestCase
     /** Today's SMS list BSB returns; tests change it between runs. */
     protected array $smsToday = [];
 
+    /** Today's WhatsApp list; empty = BSB's "No msgs sent today". */
+    protected array $wpToday = [];
+
     protected function account(): SocialAccount
     {
         $company = Company::create(['name' => 'Acme']);
@@ -41,10 +44,12 @@ class BsbSyncTest extends TestCase
                 str_ends_with($path, '/getBalanceJson.php') => Http::response(['status' => 201, 'message' => 'Balance retrieved', 'smsbalance' => '1250.50', 'wpbalance' => '30']),
                 str_ends_with($path, '/getMessageStatusJson.php') => ($body[0]['route'] ?? 'sms') === 'sms'
                     ? Http::response($this->smsToday)
-                    : Http::response('No msgs sent today'), // plain text answer
+                    : ($this->wpToday ? Http::response($this->wpToday) : Http::response('No msgs sent today')), // plain text answer
                 str_ends_with($path, '/getMessageStatusByAcksJson.php') => Http::response(array_map(fn ($ack) => $ack === 50
                     ? ['ack' => 50, 'opstatus' => 'FAILED', 'recipient' => '96171000000', 'found' => true]
-                    : ['ack' => $ack, 'opstatus' => null, 'recipient' => null, 'found' => false], $body['acks'])),
+                    : ($ack === 60
+                    ? ['ack' => 60, 'opstatus' => 'READ', 'recipient' => '96181800453', 'found' => true]
+                    : ['ack' => $ack, 'opstatus' => null, 'recipient' => null, 'found' => false]), $body['acks'])),
                 default => Http::response('not found', 404),
             };
         });
@@ -94,6 +99,28 @@ class BsbSyncTest extends TestCase
         $this->assertTrue($m->status_changed_at->gt($m->first_seen_at));
         $this->assertSame(0, $result['counts']['new messages']);
         $this->assertSame(1, $result['counts']['status updates']);
+    }
+
+    public function test_whatsapp_read_counts_as_delivered_and_delivered_whatsapp_is_rechecked(): void
+    {
+        $account = $this->account();
+        $old = fn (string $route, string $ack) => SocialBulkMessage::create([
+            'social_account_id' => $account->id, 'route' => $route, 'ack' => $ack, 'recipient' => '96181800453', 'status' => 'DELIVERED',
+            'first_seen_at' => now()->subDays(2), 'delivered_at' => now()->subDays(2), 'created_at' => now()->subDays(2), 'updated_at' => now()->subDays(2),
+        ]);
+        $old('wp', '60');  // delivered WhatsApp: may still be read, so re-checked
+        $old('sms', '70'); // delivered SMS: final, left alone
+        $this->wpToday = [['ack' => '201', 'opstatus' => 'READ', 'recipient' => '96170611905']];
+        $this->fakeBsb();
+
+        app(BsbSyncService::class)->syncAccount($account);
+
+        $today = SocialBulkMessage::where('ack', '201')->first();
+        $this->assertSame('READ', $today->status);
+        $this->assertNotNull($today->delivered_at);
+        $this->assertSame('READ', SocialBulkMessage::where('ack', '60')->value('status'));
+        $this->assertTrue(SocialBulkMessage::where('ack', '60')->first()->delivered_at->lt(now()->subDay())); // first delivery kept
+        Http::assertSent(fn ($r) => str_ends_with($r->url(), '/getMessageStatusByAcksJson.php') && $r['acks'] === [60]);
     }
 
     public function test_refused_credentials_become_a_warning(): void

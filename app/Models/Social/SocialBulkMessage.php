@@ -14,9 +14,33 @@ class SocialBulkMessage extends Model
 {
     public const ROUTES = ['sms' => 'SMS', 'wp' => 'WhatsApp'];
 
-    /** BSB's statuses, in funnel order. DELIVERED and FAILED don't change any more. */
-    public const STATUSES = ['DELIVERED', 'SENT', 'PENDING', 'FAILED'];
-    public const FINAL = ['DELIVERED', 'FAILED'];
+    /** Reached the phone. READ (WhatsApp only) means it was also opened. */
+    public const DELIVERED = ['DELIVERED', 'READ'];
+
+    /** Will never arrive. BSB documents FAILED; the others are common SMS delivery reports. */
+    public const FAILED = ['FAILED', 'UNDELIVERED', 'REJECTED', 'EXPIRED'];
+
+    /** Everything else (SENT, PENDING, unknown) is still on the way. */
+
+    /**
+     * Statuses that won't change any more on a route. A delivered WhatsApp
+     * message can still be read, so it keeps being re-checked; SMS can't.
+     */
+    public static function finalStatuses(string $route): array
+    {
+        return $route === 'wp'
+            ? array_merge(['READ'], self::FAILED)
+            : array_merge(self::DELIVERED, self::FAILED);
+    }
+
+    /** SQL CASE turning the status into its funnel group: delivered | failed | progress. */
+    public static function groupSql(): string
+    {
+        $list = fn (array $statuses) => implode(',', array_map(fn ($s) => "'$s'", $statuses));
+
+        return 'CASE WHEN status IN (' . $list(self::DELIVERED) . ") THEN 'delivered'"
+            . ' WHEN status IN (' . $list(self::FAILED) . ") THEN 'failed' ELSE 'progress' END";
+    }
 
     protected $guarded = [];
 

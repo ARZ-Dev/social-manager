@@ -1105,13 +1105,16 @@ class SocialMediaView extends Component
     {
         $since = now()->startOfDay()->subDays($this->days - 1);
         $inPeriod = fn () => SocialBulkMessage::whereIn('social_account_id', $ids)->where('first_seen_at', '>=', $since);
-        // Funnel groups: delivered, still on the way (sent / pending / unknown), failed.
-        $group = "CASE WHEN status = 'DELIVERED' THEN 'delivered' WHEN status = 'FAILED' THEN 'failed' ELSE 'progress' END";
+        // Funnel groups: delivered (read included), still on the way (sent / pending / unknown), failed.
+        $group = SocialBulkMessage::groupSql();
+        $delivered = "'" . implode("','", SocialBulkMessage::DELIVERED) . "'";
+        $failed = "'" . implode("','", SocialBulkMessage::FAILED) . "'";
 
-        $byRoute = $inPeriod()->selectRaw("route, $group as grp, COUNT(*) as n")->groupBy('route', 'grp')->get();
+        $byRoute = $inPeriod()->selectRaw("route, $group as grp, COUNT(*) as n, SUM(status = 'READ') as r")->groupBy('route', 'grp')->get();
         $funnel = fn (Collection $rows) => [
             'total' => (int) $rows->sum('n'),
             'delivered' => (int) $rows->where('grp', 'delivered')->sum('n'),
+            'read' => (int) $rows->sum('r'), // WhatsApp only: opened by the recipient
             'progress' => (int) $rows->where('grp', 'progress')->sum('n'),
             'failed' => (int) $rows->where('grp', 'failed')->sum('n'),
         ];
@@ -1128,9 +1131,10 @@ class SocialMediaView extends Component
         $term = preg_replace('/\D/', '', $this->smsSearch);
         $list = $inPeriod()->with('account')
             ->when($this->smsRoute, fn ($q) => $q->where('route', $this->smsRoute))
-            ->when($this->smsStatus === 'delivered', fn ($q) => $q->where('status', 'DELIVERED'))
-            ->when($this->smsStatus === 'failed', fn ($q) => $q->where('status', 'FAILED'))
-            ->when($this->smsStatus === 'progress', fn ($q) => $q->where(fn ($w) => $w->whereNull('status')->orWhereNotIn('status', SocialBulkMessage::FINAL)))
+            ->when($this->smsStatus === 'delivered', fn ($q) => $q->whereIn('status', SocialBulkMessage::DELIVERED))
+            ->when($this->smsStatus === 'failed', fn ($q) => $q->whereIn('status', SocialBulkMessage::FAILED))
+            ->when($this->smsStatus === 'progress', fn ($q) => $q->where(fn ($w) => $w->whereNull('status')
+                ->orWhereNotIn('status', array_merge(SocialBulkMessage::DELIVERED, SocialBulkMessage::FAILED))))
             ->when($term !== '', fn ($q) => $q->where('recipient', 'like', '%' . $term . '%'))
             ->latest('first_seen_at')
             ->orderByDesc('id');
@@ -1150,7 +1154,7 @@ class SocialMediaView extends Component
                 'series' => [$line('delivered', 'Delivered'), $line('progress', 'On the way'), $line('failed', 'Failed')],
                 'colors' => ['#16A34A', '#94A3B8', '#DC2626'],
             ],
-            'smsCountries' => $inPeriod()->selectRaw("country, COUNT(*) as n, SUM(status = 'DELIVERED') as delivered, SUM(status = 'FAILED') as failed")
+            'smsCountries' => $inPeriod()->selectRaw("country, COUNT(*) as n, SUM(status IN ($delivered)) as delivered, SUM(status IN ($failed)) as failed")
                 ->groupBy('country')->orderByDesc('n')->limit(10)->get(),
             'smsMessages' => $list->paginate(25),
             'smsLogStart' => SocialBulkMessage::whereIn('social_account_id', $ids)->min('first_seen_at'),

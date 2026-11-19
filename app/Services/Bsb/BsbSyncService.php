@@ -107,7 +107,7 @@ class BsbSyncService extends \App\Services\Sync\BaseSyncService
                         'status' => $row['status'],
                         'first_seen_at' => $now,
                         'status_changed_at' => $now,
-                        'delivered_at' => $row['status'] === 'DELIVERED' ? $now : null,
+                        'delivered_at' => in_array($row['status'], SocialBulkMessage::DELIVERED, true) ? $now : null,
                         'created_at' => $now,
                         'updated_at' => $now,
                     ];
@@ -135,7 +135,9 @@ class BsbSyncService extends \App\Services\Sync\BaseSyncService
             ->where('first_seen_at', '>=', now()->subDays((int) config('bsb.recheck_days')))
             ->where('first_seen_at', '<', now()->startOfDay())
             ->where('updated_at', '<', $startedAt)
-            ->where(fn ($q) => $q->whereNull('status')->orWhereNotIn('status', SocialBulkMessage::FINAL))
+            ->where(fn ($q) => $q->whereNull('status')
+                ->orWhere(fn ($w) => $w->where('route', 'wp')->whereNotIn('status', SocialBulkMessage::finalStatuses('wp')))
+                ->orWhere(fn ($w) => $w->where('route', '!=', 'wp')->whereNotIn('status', SocialBulkMessage::finalStatuses('sms'))))
             ->get(['id', 'route', 'ack', 'status']);
 
         $changed = 0;
@@ -166,7 +168,7 @@ class BsbSyncService extends \App\Services\Sync\BaseSyncService
         $n = 0;
         foreach ($updates as $status => $ids) {
             $values = ['status' => $status, 'status_changed_at' => $now, 'updated_at' => $now];
-            if ($status === 'DELIVERED') {
+            if (in_array($status, SocialBulkMessage::DELIVERED, true)) {
                 // Keep the first time it was seen delivered.
                 $values['delivered_at'] = DB::raw('COALESCE(`delivered_at`, ' . DB::getPdo()->quote($now->toDateTimeString()) . ')');
             }

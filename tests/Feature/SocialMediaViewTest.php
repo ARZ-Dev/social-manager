@@ -63,7 +63,7 @@ class SocialMediaViewTest extends TestCase
             'company_id' => $this->company->id, 'platform' => 'bsb', 'external_id' => SocialAccount::bsbFingerprint('k'), 'name' => 'Main BSB',
             'access_token' => json_encode(['api_key' => 'k', 'api_secret' => 's']), 'meta' => ['sms_balance' => 1250.5, 'wp_balance' => 30], 'last_synced_at' => now(),
         ]);
-        foreach ([['1', 'DELIVERED', '96170123456', 'LB', 'sms'], ['2', 'FAILED', '971501234567', 'AE', 'sms'], ['3', 'PENDING', '96171222333', 'LB', 'wp']] as [$ack, $status, $to, $cc, $route]) {
+        foreach ([['1', 'DELIVERED', '96170123456', 'LB', 'sms'], ['2', 'FAILED', '971501234567', 'AE', 'sms'], ['3', 'PENDING', '96171222333', 'LB', 'wp'], ['4', 'READ', '96181800453', 'LB', 'wp']] as [$ack, $status, $to, $cc, $route]) {
             SocialBulkMessage::create(['social_account_id' => $bsb->id, 'route' => $route, 'ack' => $ack, 'status' => $status, 'recipient' => $to,
                 'country' => $cc, 'first_seen_at' => now()->subHours(2), 'status_changed_at' => now()->subHour()]);
         }
@@ -101,7 +101,11 @@ class SocialMediaViewTest extends TestCase
             ->assertSee('All messages')
             ->assertSee('+96170123456')
             ->assertSee('Lebanon')
-            ->assertSee('33.3%') // 1 of 3 delivered
+            ->assertSee('50%')   // 2 of 4 delivered: a read WhatsApp message counts
+            ->assertSee('1 read on WhatsApp')
+            ->call('setSmsStatus', 'delivered')
+            ->assertSee('+96181800453')
+            ->assertDontSee('+96171222333')
             ->call('setSmsStatus', 'failed')
             ->assertSee('+971501234567')
             ->assertDontSee('+96170123456');

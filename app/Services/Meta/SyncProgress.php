@@ -22,6 +22,12 @@ class SyncProgress
         'messages' => 'Messages',
         'ads' => 'Ads',
         'breakdowns' => 'Ad breakdowns',
+        // Google Ads
+        'campaigns' => 'Campaigns',
+        'daily' => 'Daily results',
+        // BSB
+        'balance' => 'Balance',
+        'statuses' => 'Delivery updates',
     ];
 
     protected float $doneWeight = 0;

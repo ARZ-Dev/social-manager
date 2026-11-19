@@ -30,6 +30,14 @@ class CompanyForm extends Component
     public string $meta_app_secret = '';
     public bool $hasMetaSecret = false;
 
+    /** Google Ads: OAuth client (Google Cloud) and developer token (Google Ads API Center). */
+    public string $google_ads_client_id = '';
+    /** Write-only, like the Meta secret: blank = keep the saved value. */
+    public string $google_ads_client_secret = '';
+    public string $google_ads_developer_token = '';
+    public bool $hasGoogleSecret = false;
+    public bool $hasGoogleToken = false;
+
     /** Branch rows edited inline: [id, name, external_id, phone, address, is_active]. */
     public array $branches = [];
 
@@ -50,6 +58,9 @@ class CompanyForm extends Component
             $this->is_active = $this->company->is_active;
             $this->meta_app_id = $this->company->meta_app_id ?? '';
             $this->hasMetaSecret = filled($this->company->meta_app_secret);
+            $this->google_ads_client_id = $this->company->google_ads_client_id ?? '';
+            $this->hasGoogleSecret = filled($this->company->google_ads_client_secret);
+            $this->hasGoogleToken = filled($this->company->google_ads_developer_token);
 
             $this->branches = $this->company->branches()->orderBy('name')->get()
                 ->map(fn ($b) => [
@@ -93,6 +104,12 @@ class CompanyForm extends Component
                 // A new App ID needs a secret, unless one is already saved.
                 \Illuminate\Validation\Rule::requiredIf(fn () => filled($this->meta_app_id) && !$this->hasMetaSecret),
             ],
+            'google_ads_client_id' => ['nullable', 'string', 'max:255', 'regex:/^[\w.-]+\.apps\.googleusercontent\.com$/'],
+            // A new client ID needs a secret and a developer token, unless they're already saved.
+            'google_ads_client_secret' => ['nullable', 'string', 'max:255',
+                \Illuminate\Validation\Rule::requiredIf(fn () => filled($this->google_ads_client_id) && !$this->hasGoogleSecret)],
+            'google_ads_developer_token' => ['nullable', 'string', 'min:10', 'max:64', 'regex:/^[A-Za-z0-9_-]+$/',
+                \Illuminate\Validation\Rule::requiredIf(fn () => filled($this->google_ads_client_id) && !$this->hasGoogleToken)],
             'branches' => ['array'],
             // validate() only returns keys that have a rule: without this, every
             // row lost its id, so each save deleted and re-inserted all branches.
@@ -111,6 +128,9 @@ class CompanyForm extends Component
         return [
             'meta_app_id' => 'Meta App ID',
             'meta_app_secret' => 'Meta App Secret',
+            'google_ads_client_id' => 'OAuth client ID',
+            'google_ads_client_secret' => 'OAuth client secret',
+            'google_ads_developer_token' => 'developer token',
             'branches.*.name' => 'branch name',
             'branches.*.external_id' => 'branch external ID',
             'branches.*.phone' => 'branch phone',
@@ -128,6 +148,9 @@ class CompanyForm extends Component
         foreach ($this->branches as $i => $branch) {
             $this->branches[$i]['external_id'] = trim((string) ($branch['external_id'] ?? ''));
         }
+        foreach (['google_ads_client_id', 'google_ads_client_secret', 'google_ads_developer_token'] as $field) {
+            $this->$field = trim($this->$field);
+        }
 
         $data = $this->validate();
         $branches = $data['branches'] ?? [];
@@ -139,6 +162,16 @@ class CompanyForm extends Component
             $data['meta_app_secret'] = null;
         } elseif (blank($data['meta_app_secret'])) {
             unset($data['meta_app_secret']);
+        }
+
+        // Same for Google Ads: blank secret / token keep the saved ones; no client ID removes all three.
+        $data['google_ads_client_id'] = $data['google_ads_client_id'] ?: null;
+        foreach (['google_ads_client_secret', 'google_ads_developer_token'] as $field) {
+            if (!$data['google_ads_client_id']) {
+                $data[$field] = null;
+            } elseif (blank($data[$field])) {
+                unset($data[$field]);
+            }
         }
 
         try {

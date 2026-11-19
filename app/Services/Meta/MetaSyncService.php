@@ -9,6 +9,7 @@ use App\Models\Social\SocialConversation;
 use App\Models\Social\SocialDemographic;
 use App\Models\Social\SocialInsight;
 use App\Models\Social\SocialPost;
+use App\Services\Sync\SyncsAccount;
 use Carbon\Carbon;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\DB;
@@ -18,7 +19,7 @@ use Illuminate\Support\Facades\DB;
  * their breakdowns for linked accounts and stores them. Each section is independent: a failure (missing permission,
  * deprecated metric...) is recorded as a warning and the rest continues.
  */
-class MetaSyncService
+class MetaSyncService implements SyncsAccount
 {
     /** @var string[] */
     protected array $warnings = [];

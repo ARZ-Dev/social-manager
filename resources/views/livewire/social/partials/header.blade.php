@@ -70,15 +70,16 @@
                 @endif
             @endcan
             @can('social-connect')
-                @if($metaConfigured)
-                    <a href="{{ route('social.connect', ['company' => $currentCompany->id]) }}" class="btn btn-primary">
+                {{-- One menu for every platform; ones needing setup say so --}}
+                <div x-data="{ open: false }" class="relative" x-on:click.outside="open = false" x-on:keydown.escape="open = false">
+                    <button type="button" class="btn btn-primary" x-on:click="open = !open" :aria-expanded="open" aria-haspopup="menu">
                         <x-icon name="plug-connected" class="size-4" /> {{ $accounts->isEmpty() ? 'Connect accounts' : 'Connect more' }}
-                    </a>
-                @else
-                    <button type="button" class="btn btn-primary" disabled title="Add the company's Meta App ID and App Secret first">
-                        <x-icon name="plug-connected" class="size-4" /> Connect accounts
+                        <x-icon name="chevron-down" class="size-4 opacity-80" />
                     </button>
-                @endif
+                    <div x-show="open" x-transition.origin.top.right x-cloak class="dropdown-panel right-0 w-80 p-1" role="menu">
+                        @include('livewire.social.partials.connect-options', ['menu' => true])
+                    </div>
+                </div>
             @endcan
         </div>
     </div>
@@ -112,7 +113,7 @@
             @php
                 $prevPlatform = null;
                 $platformCounts = $accounts->countBy('platform');
-                $groupNames = ['facebook' => 'Facebook', 'instagram' => 'Instagram', 'ads' => 'Ads'];
+                $groupNames = ['facebook' => 'Facebook', 'instagram' => 'Instagram', 'ads' => 'Meta ads', 'google_ads' => 'Google Ads', 'bsb' => 'BSB'];
             @endphp
             @foreach($accounts as $acc)
                 {{-- Group label before the first account of each platform --}}
@@ -141,7 +142,11 @@
                                 @if(isset($acc->meta['followers']))
                                     {{ $fmt($acc->meta['followers']) }} followers
                                 @elseif($acc->platform === 'ads')
-                                    Ads{{ isset($acc->meta['currency']) ? ' · ' . $acc->meta['currency'] : '' }}
+                                    Meta ads{{ isset($acc->meta['currency']) ? ' · ' . $acc->meta['currency'] : '' }}
+                                @elseif($acc->platform === 'google_ads')
+                                    {{ \App\Services\GoogleAds\GoogleAdsClient::formatCustomerId($acc->external_id) }}{{ isset($acc->meta['currency']) ? ' · ' . $acc->meta['currency'] : '' }}
+                                @elseif($acc->platform === 'bsb' && isset($acc->meta['sms_balance']))
+                                    SMS {{ $fmt($acc->meta['sms_balance']) }} · WA {{ $fmt($acc->meta['wp_balance'] ?? 0) }}
                                 @else
                                     {{ $platforms[$acc->platform]['label'] }}
                                 @endif

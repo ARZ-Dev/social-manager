@@ -14,6 +14,8 @@ class SocialAd extends Model
         return [
             'started_at' => 'datetime',
             'spend' => 'decimal:2',
+            'conversions' => 'decimal:2',
+            'conversion_value' => 'decimal:2',
         ];
     }
 

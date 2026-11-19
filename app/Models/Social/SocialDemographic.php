@@ -30,6 +30,13 @@ class SocialDemographic extends Model
                 default => 'Unknown',
             },
             'country' => self::countryName($segment),
+            'age' => $segment === 'unknown' ? 'Unknown age' : $segment,
+            // Google Ads networks
+            'network' => [
+                'search' => 'Google Search', 'search_partners' => 'Search partners', 'content' => 'Display Network',
+                'youtube' => 'YouTube', 'mixed' => 'Cross-network', 'discover' => 'Discover', 'gmail' => 'Gmail',
+                'maps' => 'Maps', 'google_tv' => 'Google TV', 'google_owned_channels' => 'Google channels',
+            ][strtolower($segment)] ?? ucfirst(str_replace('_', ' ', strtolower($segment))),
             'publisher_platform', 'platform_position', 'device_platform' => ucfirst(str_replace('_', ' ', $segment)),
             default => $segment,
         };
@@ -37,6 +44,9 @@ class SocialDemographic extends Model
 
     protected static function countryName(string $code): string
     {
+        if ($code === '' || strtolower($code) === 'unknown') {
+            return 'Unknown';
+        }
         if (strlen($code) === 2 && class_exists(\Locale::class)) {
             $name = \Locale::getDisplayRegion('-' . strtoupper($code), 'en');
             if ($name && strcasecmp($name, $code) !== 0) {

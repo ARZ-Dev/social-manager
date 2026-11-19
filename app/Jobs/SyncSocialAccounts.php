@@ -3,13 +3,16 @@
 namespace App\Jobs;
 
 use App\Models\Social\SocialAccount;
+use App\Services\Bsb\BsbSyncService;
+use App\Services\GoogleAds\GoogleAdsSyncService;
 use App\Services\Meta\MetaSyncService;
 use App\Services\Meta\SyncStopped;
+use App\Services\Sync\SyncsAccount;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Support\Carbon;
 
 /**
- * Fetches Meta data for a set of accounts, one after another, from $since until today.
+ * Fetches data for a set of accounts (Meta, Google Ads, BSB), one after another, from $since until today.
  *
  * Dispatched with dispatchAfterResponse(), so it runs right after the page gets
  * its answer (no queue worker needed) and a long fetch can't hit the web
@@ -36,7 +39,17 @@ class SyncSocialAccounts
     ) {
     }
 
-    public function handle(MetaSyncService $sync): void
+    /** The service that fetches an account of this platform. */
+    public static function serviceFor(SocialAccount $account): SyncsAccount
+    {
+        return app(match ($account->platform) {
+            SocialAccount::GOOGLE_ADS => GoogleAdsSyncService::class,
+            SocialAccount::BSB => BsbSyncService::class,
+            default => MetaSyncService::class,
+        });
+    }
+
+    public function handle(): void
     {
         @set_time_limit(0);
         ignore_user_abort(true);
@@ -73,7 +86,7 @@ class SyncSocialAccounts
             $onProgress = fn (int $percent, string $step) => $ours()->update(['sync_progress' => $percent, 'sync_step' => $step]);
 
             try {
-                $result = $sync->syncAccount($account, $since, fn () => !$stillOurs(), $onProgress);
+                $result = self::serviceFor($account)->syncAccount($account, $since, fn () => !$stillOurs(), $onProgress);
                 // What this fetch brought in, for the progress list.
                 $fresh = $account->fresh();
                 $fresh->update(['meta' => array_merge($fresh->meta ?? [], ['last_fetch_counts' => array_filter($result['counts'])])]);

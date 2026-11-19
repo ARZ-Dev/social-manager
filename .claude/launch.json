@@ -20,6 +20,16 @@
       ],
       "port": 8000,
       "url": "http://localhost:8000"
+    },
+    {
+      "name": "app-demo",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": [
+        "/c",
+        "cd public && set DB_DATABASE=social_manager_demo&& php -S localhost:8001 ../vendor/laravel/framework/src/Illuminate/Foundation/resources/server.php"
+      ],
+      "port": 8001,
+      "url": "http://localhost:8001"
     }
   ]
 }

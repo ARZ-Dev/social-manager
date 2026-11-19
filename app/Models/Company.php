@@ -10,15 +10,21 @@ class Company extends Model
 {
     use SoftDeletes;
 
-    protected $fillable = ['name', 'email', 'phone', 'address', 'is_active', 'meta_app_id', 'meta_app_secret'];
+    protected $fillable = [
+        'name', 'email', 'phone', 'address', 'is_active',
+        'meta_app_id', 'meta_app_secret',
+        'google_ads_developer_token', 'google_ads_client_id', 'google_ads_client_secret',
+    ];
 
-    protected $hidden = ['meta_app_secret'];
+    protected $hidden = ['meta_app_secret', 'google_ads_developer_token', 'google_ads_client_secret'];
 
     protected function casts(): array
     {
         return [
             'is_active' => 'boolean',
             'meta_app_secret' => 'encrypted',
+            'google_ads_developer_token' => 'encrypted',
+            'google_ads_client_secret' => 'encrypted',
         ];
     }
 
@@ -26,6 +32,14 @@ class Company extends Model
     public function hasMetaApp(): bool
     {
         return filled($this->meta_app_id) && filled($this->meta_app_secret);
+    }
+
+    /** True when the company has entered its Google Ads developer token and OAuth client. */
+    public function hasGoogleAdsApp(): bool
+    {
+        return filled($this->google_ads_developer_token)
+            && filled($this->google_ads_client_id)
+            && filled($this->google_ads_client_secret);
     }
 
     public function branches(): HasMany

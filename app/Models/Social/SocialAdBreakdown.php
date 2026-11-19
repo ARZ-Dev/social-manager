@@ -14,7 +14,7 @@ class SocialAdBreakdown extends Model
 
     protected function casts(): array
     {
-        return ['spend' => 'decimal:2'];
+        return ['spend' => 'decimal:2', 'conversions' => 'decimal:2'];
     }
 
     public function account(): BelongsTo
@@ -27,7 +27,8 @@ class SocialAdBreakdown extends Model
      */
     public static function label(string $breakdown, string $segment): string
     {
-        $dims = explode(',', config("meta.ad_breakdowns.$breakdown", ''));
+        // Meta and Google share 'country' and 'device'; the others are their own.
+        $dims = explode(',', config("meta.ad_breakdowns.$breakdown") ?? config("google_ads.breakdowns.$breakdown", ''));
         $values = explode('|', $segment);
 
         return collect($values)

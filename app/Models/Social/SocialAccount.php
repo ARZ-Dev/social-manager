@@ -9,13 +9,28 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
- * A Facebook Page, Instagram business account or ad account linked to a company.
+ * An account linked to a company: a Facebook Page, Instagram business account,
+ * Meta ad account, Google Ads account or BSB (SMS / WhatsApp) account.
  */
 class SocialAccount extends Model
 {
     public const FACEBOOK = 'facebook';
     public const INSTAGRAM = 'instagram';
-    public const ADS = 'ads';
+    public const ADS = 'ads'; // Meta ad account
+    public const GOOGLE_ADS = 'google_ads';
+    public const BSB = 'bsb';
+
+    /** Display and fetch order: Pages before their Instagram accounts, then ad accounts, then BSB. */
+    public const PLATFORMS = [self::FACEBOOK, self::INSTAGRAM, self::ADS, self::GOOGLE_ADS, self::BSB];
+
+    /** Platforms with posts, audience and conversations. */
+    public const SOCIAL = [self::FACEBOOK, self::INSTAGRAM];
+
+    /** Ad accounts, shown in the Ads tab. */
+    public const AD_PLATFORMS = [self::ADS, self::GOOGLE_ADS];
+
+    /** Platforms connected through the company's Meta app. */
+    public const META = [self::FACEBOOK, self::INSTAGRAM, self::ADS];
 
     protected $guarded = [];
 
@@ -59,7 +74,40 @@ class SocialAccount extends Model
             $account->demographics()->delete();
             $account->ads()->delete();
             $account->adBreakdowns()->delete();
+            $account->adDailyStats()->delete();
+            $account->bulkMessages()->delete();
         });
+    }
+
+    /** Sort accounts in PLATFORMS order (Pages, Instagram, Meta ads, Google Ads, BSB). */
+    public function scopeOrderedByPlatform($query)
+    {
+        $list = implode(',', array_map(fn ($p) => "'$p'", self::PLATFORMS));
+
+        return $query->orderByRaw("FIELD(platform, $list)");
+    }
+
+    /**
+     * BSB API key and secret. Both are kept encrypted in access_token; the
+     * external_id is only a fingerprint of the key, so it can't be read back.
+     *
+     * @return array{api_key: string, api_secret: string}|null
+     */
+    public function bsbCredentials(): ?array
+    {
+        if ($this->platform !== self::BSB || !$this->access_token) {
+            return null;
+        }
+
+        $creds = json_decode($this->access_token, true);
+
+        return is_array($creds) && filled($creds['api_key'] ?? null) && filled($creds['api_secret'] ?? null) ? $creds : null;
+    }
+
+    /** external_id for a BSB account: a short fingerprint of its API key. */
+    public static function bsbFingerprint(string $apiKey): string
+    {
+        return 'bsb_' . substr(hash('sha256', $apiKey), 0, 24);
     }
 
     /** "@username" for Instagram, the Page / ad account name otherwise. */
@@ -110,6 +158,16 @@ class SocialAccount extends Model
     public function adBreakdowns(): HasMany
     {
         return $this->hasMany(SocialAdBreakdown::class);
+    }
+
+    public function adDailyStats(): HasMany
+    {
+        return $this->hasMany(SocialAdDailyStat::class);
+    }
+
+    public function bulkMessages(): HasMany
+    {
+        return $this->hasMany(SocialBulkMessage::class);
     }
 
     /**

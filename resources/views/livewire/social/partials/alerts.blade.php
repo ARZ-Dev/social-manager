@@ -144,7 +144,7 @@
                 <p class="mt-0.5 opacity-90">Its Google Ads accounts can't be fetched until the developer token and OAuth client are added.</p>
             </div>
             @can('company-edit')
-                <a href="{{ route('companies.edit', $currentCompany->id) }}#google-ads" wire:navigate class="btn btn-secondary btn-sm self-center">Set up</a>
+                <a href="{{ route('companies.edit', $currentCompany->id) }}#google-integration" wire:navigate class="btn btn-secondary btn-sm self-center">Set up</a>
             @endcan
         </div>
     @endif

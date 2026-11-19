@@ -119,9 +119,10 @@
             </div>
         </section>
 
-        {{-- Google Ads --}}
+        {{-- Google Ads. Don't use an id/class like "google-ads" or "ads" here: ad blockers
+             hide those (EasyList ###google-ads), and the whole section disappears. --}}
         @php $googleCallback = route('social.google.callback'); @endphp
-        <section class="grid gap-6 lg:grid-cols-3" id="google-ads">
+        <section class="grid gap-6 lg:grid-cols-3" id="google-integration">
             <div>
                 <h2 class="flex items-center gap-2 text-base font-semibold"><x-icon name="brand-google" class="size-5 text-[#34A853]" /> Google Ads</h2>
                 <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">The company connects its Google Ads accounts through its own Google Cloud OAuth client and Google Ads developer token.</p>

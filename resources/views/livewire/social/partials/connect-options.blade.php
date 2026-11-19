@@ -17,7 +17,7 @@
             'icon' => 'brand-google', 'tone' => 'text-[#34A853]',
             'ready' => $googleConfigured,
             'href' => route('social.google.connect', ['company' => $currentCompany->id]),
-            'setup' => route('companies.edit', $currentCompany->id) . '#google-ads',
+            'setup' => route('companies.edit', $currentCompany->id) . '#google-integration',
             'missing' => 'Needs the company\'s Google Ads developer token',
         ],
         [

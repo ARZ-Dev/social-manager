@@ -34,11 +34,20 @@ return [
         'ads_read',
     ],
 
+    // Meta retired page_impressions_unique / post_impressions_unique ("reach")
+    // in favour of the "Viewers" metrics *_total_media_view_unique. Data stored
+    // under the old names still shows; the new ones take priority.
     'metrics' => [
-        'facebook_page' => ['page_impressions_unique', 'page_post_engagements', 'page_views_total', 'page_follows'],
-        'facebook_post' => ['post_impressions_unique', 'post_clicks', 'post_reactions_by_type_total'],
+        'facebook_page' => ['page_total_media_view_unique', 'page_post_engagements', 'page_views_total', 'page_follows'],
+        'facebook_post' => ['post_total_media_view_unique', 'post_clicks', 'post_reactions_by_type_total'],
         'instagram_account' => ['reach', 'follower_count'],
         'instagram_media' => ['reach', 'views', 'likes', 'comments', 'saved', 'shares', 'total_interactions'],
+    ],
+
+    // Daily metrics Meta only serves for its last N days, today excluded.
+    // Each fetch asks for that window only; older days stay as stored.
+    'recent_only' => [
+        'instagram_account' => ['follower_count' => 30],
     ],
 
     // How daily account metrics appear on the Overview tab, in chart order.

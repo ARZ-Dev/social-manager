@@ -237,7 +237,16 @@ class MetaSyncService
         // Instagram DMs are read through the linked Facebook Page.
         if ($account->parent) {
             $this->attempt($account, 'Instagram conversations', function () use ($account, $token, &$counts) {
-                $counts['conversations'] = $this->syncConversations($account, $account->parent->external_id, 'instagram', $token);
+                try {
+                    $counts['conversations'] = $this->syncConversations($account, $account->parent->external_id, 'instagram', $token);
+                } catch (MetaApiException $e) {
+                    // Meta's generic "unknown error" (code 1) here means the account
+                    // doesn't let apps read its inbox. Only its owner can change that.
+                    if ($e->getCode() !== 1) {
+                        throw $e;
+                    }
+                    throw new MetaApiException(rtrim($e->getMessage(), '.') . '. In the Instagram app, turn on Settings → Messages and story replies → Message controls → Connected tools → "Allow access to messages", then fetch again.', 1, $e);
+                }
             });
         }
 
@@ -332,13 +341,21 @@ class MetaSyncService
     {
         $n = 0;
         $end = now(); // fixed once, so the loop always terminates
+        $recentOnly = config("meta.recent_only.$metricSet", []);
 
         foreach (config("meta.metrics.$metricSet") as $metric) {
             $from = $this->since->copy();
+            $until = $end;
+            if (isset($recentOnly[$metric])) {
+                // Only the last N days, today excluded, in Meta's Insights day
+                // (Pacific time). One day of margin so the edge is never rejected.
+                $until = now('America/Los_Angeles')->startOfDay();
+                $from = $from->max($until->copy()->subDays($recentOnly[$metric] - 1));
+            }
             try {
-                while ($from->lt($end)) {
+                while ($from->lt($until)) {
                     $this->checkStop();
-                    $to = $from->copy()->addDays($maxDays)->min($end);
+                    $to = $from->copy()->addDays($maxDays)->min($until);
                     $res = $this->meta->get($account->external_id . '/insights', [
                         'metric' => $metric,
                         'period' => 'day',
@@ -417,8 +434,11 @@ class MetaSyncService
                     ], $token);
                     $n += $this->storeDemographics($account, $metric, $dimension, $this->segments($res, $dimension));
                 } catch (MetaApiException $e) {
-                    // Usually the account is under Meta's 100 followers / engagements threshold.
-                    $this->warnOnce($account, "audience metric '$metric'", $e);
+                    // Under Meta's 100 followers / engagements threshold there is
+                    // simply no data yet: not an error, so no warning.
+                    if (!$this->isBelowThreshold($e)) {
+                        $this->warnOnce($account, "audience metric '$metric'", $e);
+                    }
                 }
             }
         }
@@ -684,6 +704,12 @@ class MetaSyncService
         if ($this->shouldStop && ($this->shouldStop)()) {
             throw new SyncStopped('The fetch was stopped.');
         }
+    }
+
+    /** Meta's answer when an account is too small for a metric (e.g. under 100 engagements). */
+    protected function isBelowThreshold(MetaApiException $e): bool
+    {
+        return stripos($e->getMessage(), 'not enough users') !== false;
     }
 
     /** One warning per metric, not one per post. */

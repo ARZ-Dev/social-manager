@@ -61,7 +61,7 @@ class UserForm extends Component
             $this->first_name = $this->user->first_name;
             $this->last_name = $this->user->last_name;
             $this->username = $this->user->username;
-            $this->email = $this->user->email;
+            $this->email = $this->user->email ?? '';
 
             $this->phone = $this->user->phone;
             $this->company_id = $this->user->company_id ?? '';
@@ -106,7 +106,7 @@ class UserForm extends Component
             'first_name' => ['required', 'string'],
             'last_name' => ['required', 'string'],
             'username' => ['required', Rule::unique('users', 'username')],
-            'email' => ['nullable', 'email'],
+            'email' => $this->emailRule(),
             'role_name' => $this->roleRule(),
             'company_id' => $this->companyRule(),
 
@@ -134,6 +134,22 @@ class UserForm extends Component
         ];
     }
 
+    /**
+     * users.email has a unique index: check it here instead of letting the
+     * insert fail. Blank emails are saved as NULL (see normalizeEmail), which
+     * the index allows any number of times.
+     */
+    protected function emailRule(): array
+    {
+        return ['nullable', 'email', 'max:255', Rule::unique('users', 'email')->ignore($this->user?->id)];
+    }
+
+    /** Livewire skips the TrimStrings / ConvertEmptyStringsToNull middleware. */
+    protected function normalizeEmail(): void
+    {
+        $this->email = trim($this->email);
+    }
+
     protected function roleRule(): array
     {
         return [
@@ -153,13 +169,14 @@ class UserForm extends Component
     {
 
         $this->authorize('user-create');
+        $this->normalizeEmail();
         $this->validate();
-        
+
         $user = User::create([
             'first_name' => $this->first_name,
             'last_name' => $this->last_name,
             'username' => $this->username,
-            'email' => $this->email,
+            'email' => $this->email ?: null,
             'phone' => $this->phone,
             'company_id' => $this->company_id ?: null,
             'password' => Hash::make($this->password),
@@ -177,12 +194,13 @@ class UserForm extends Component
 
         
         $this->authorize('user-edit');
+        $this->normalizeEmail();
 
         $this->validate([
             'first_name' => ['required', 'string'],
             'last_name' => ['required', 'string'],
             'username' => ['required', Rule::unique('users', 'username')->ignore($this->user->id)],
-            'email' => ['nullable', 'email'],
+            'email' => $this->emailRule(),
             'role_name' => $this->roleRule(),
             'company_id' => $this->companyRule(),
 
@@ -193,7 +211,7 @@ class UserForm extends Component
         $this->user->first_name = $this->first_name;
         $this->user->last_name = $this->last_name;
         $this->user->username = $this->username;
-        $this->user->email = $this->email;
+        $this->user->email = $this->email ?: null;
 
         $this->user->phone = $this->phone;
         $this->user->company_id = $this->company_id ?: null;

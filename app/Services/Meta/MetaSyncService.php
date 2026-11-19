@@ -482,8 +482,14 @@ class MetaSyncService
                 ->where('metric', $metric)
                 ->where('dimension', $dimension)
                 ->delete();
+            // Upsert, not insert: segments that differ only by accent, case or a
+            // trailing space are one key to MySQL. Their counts are added up.
             foreach (array_chunk($rows, 500) as $chunk) {
-                SocialDemographic::insert($chunk);
+                SocialDemographic::upsert(
+                    $chunk,
+                    ['social_account_id', 'metric', 'dimension', 'segment'],
+                    ['value' => DB::raw('`value` + VALUES(`value`)'), 'updated_at']
+                );
             }
         });
 
@@ -640,8 +646,20 @@ class MetaSyncService
 
         DB::transaction(function () use ($account, $name, $records) {
             SocialAdBreakdown::where('social_account_id', $account->id)->where('breakdown', $name)->delete();
+            // Upsert, not insert: segments that differ only by accent, case or a
+            // trailing space are one key to MySQL. Their results are added up.
             foreach (array_chunk(array_values($records), 500) as $chunk) {
-                SocialAdBreakdown::insert($chunk);
+                SocialAdBreakdown::upsert(
+                    $chunk,
+                    ['social_account_id', 'ad_external_id', 'breakdown', 'segment'],
+                    [
+                        'spend' => DB::raw('`spend` + VALUES(`spend`)'),
+                        'impressions' => DB::raw('`impressions` + VALUES(`impressions`)'),
+                        'reach' => DB::raw('`reach` + VALUES(`reach`)'),
+                        'clicks' => DB::raw('`clicks` + VALUES(`clicks`)'),
+                        'updated_at',
+                    ]
+                );
             }
         });
 

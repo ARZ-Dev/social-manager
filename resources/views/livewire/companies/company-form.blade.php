@@ -127,6 +127,7 @@
                     <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">Locations or units of this company.</p>
                 </div>
                 <div class="card lg:col-span-2">
+                    @error('branches') <p class="field-error px-5 pt-4">{{ $message }}</p> @enderror
                     <div class="divide-y divide-slate-100 dark:divide-slate-800">
                         @forelse($branches as $i => $branch)
                             <div class="p-5" wire:key="branch-{{ $branch['id'] ?? 'new' }}-{{ $i }}">

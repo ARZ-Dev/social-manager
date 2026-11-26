@@ -44,8 +44,9 @@ class ResponseTimes
             $waitingSince = null;
 
             foreach ($list->sortBy(fn ($m) => $m->sent_at->getTimestamp())->values() as $m) {
-                // A reply that never reached the customer (WhatsApp "failed") doesn't answer them.
-                if ($m->from_page && ($m->status ?? null) === 'failed') {
+                // A reply that never reached the customer (WhatsApp "failed") doesn't answer them,
+                // and a customer's 👍 reaction doesn't ask for an answer.
+                if (($m->from_page && ($m->status ?? null) === 'failed') || ($m->type ?? null) === 'reaction') {
                     continue;
                 }
                 if (!$m->from_page) {

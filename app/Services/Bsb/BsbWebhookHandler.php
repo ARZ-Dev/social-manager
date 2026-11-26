@@ -11,7 +11,7 @@ use Illuminate\Support\Carbon;
  * Stores what BSB's WhatsApp Messaging API webhook sends:
  *
  * - message.received: a customer's WhatsApp message (text, image, video, voice,
- *   document). Starts or continues the conversation with that number.
+ *   document, reaction). Starts or continues the conversation with that number.
  * - message.status: an outgoing message was sent / delivered / read / failed.
  *   BSB doesn't include the text, so the message is stored without it. Only
  *   kept for numbers that already wrote to the business, so bulk campaigns
@@ -56,10 +56,13 @@ class BsbWebhookHandler
 
         $type = strtolower(trim((string) ($data['type'] ?? 'text'))) ?: 'text';
         $text = trim((string) ($data['message'] ?? ''));
+        if ($type === 'reaction') {
+            $text = (string) SocialMessage::parseReaction($text); // just the emoji, empty when removed
+        }
         $existing = SocialMessage::where('social_conversation_id', $conversation->id)->where('external_id', $messageId)->first();
 
         $media = null;
-        if ($type !== 'text' || !empty($data['media_download_url'])) {
+        if (in_array($type, SocialMessage::MEDIA_TYPES, true) || !empty($data['media_download_url'])) {
             $media = array_filter([
                 'mime_type' => $data['mime_type'] ?? null,
                 'filename' => isset($data['filename']) ? mb_substr((string) $data['filename'], 0, 200) : null,
@@ -165,8 +168,14 @@ class BsbWebhookHandler
     /** Conversation preview: the text, or what kind of file it was. */
     protected function preview(SocialMessage $message): string
     {
+        if ($message->type === 'reaction') {
+            $emoji = $message->reactionEmoji();
+
+            return $emoji ? 'Reacted ' . $emoji : 'Removed a reaction';
+        }
+
         $text = trim(str_replace('*', '', (string) $message->message));
-        if ($message->type === 'text') {
+        if (!$message->hasFile()) {
             return mb_substr($text, 0, 500);
         }
 

@@ -168,6 +168,47 @@ class BsbWebhookTest extends TestCase
         $this->assertSame(2, SocialMessage::where('from_page', true)->count());
     }
 
+    public function test_reaction_keeps_just_the_emoji_and_is_not_a_file(): void
+    {
+        Http::fake();
+        $reaction = $this->textEvent('wamid.R1', '2026-07-01T12:00:00+00:00', "👍 *Reaction Received*: 👍\n🔗 *Reacted to Message ID*: wamid.HBgLOTYxMzI1ODI4MhUCABEYEjEyQTlEMzI4OEZCRkMwNTE2MgA=");
+        $reaction['data']['type'] = 'reaction';
+        $this->deliver($reaction)->assertOk()->assertJson(['result' => 'stored']);
+
+        $message = SocialMessage::sole();
+        $this->assertSame('reaction', $message->type);
+        $this->assertSame('👍', $message->message);
+        $this->assertNull($message->media);
+        $this->assertFalse($message->hasFile());
+        $this->assertSame('Reacted 👍', SocialConversation::sole()->snippet);
+        Http::assertNothingSent();
+
+        // Removing a reaction arrives with no emoji.
+        $removed = $this->textEvent('wamid.R2', '2026-07-01T12:01:00+00:00', "👍 *Reaction Received*: \n🔗 *Reacted to Message ID*: wamid.X");
+        $removed['data']['type'] = 'reaction';
+        $this->deliver($removed)->assertOk();
+        $this->assertNull(SocialMessage::where('external_id', 'wamid.R2')->value('message'));
+        $this->assertSame('Removed a reaction', SocialConversation::sole()->snippet);
+    }
+
+    public function test_older_reactions_are_tidied_by_the_migration(): void
+    {
+        $conversation = SocialConversation::create([
+            'social_account_id' => $this->account->id, 'external_id' => 'wa:96170123456', 'participant_name' => 'Karim',
+            'snippet' => '📄 👍 Reaction Received: 👍 🔗 Reacted to Message ID: wamid.X',
+        ]);
+        $message = $conversation->messages()->create([
+            'external_id' => 'wamid.OLD', 'from_page' => false, 'type' => 'reaction', 'media' => [],
+            'message' => "👍 *Reaction Received*: 👍\n🔗 *Reacted to Message ID*: wamid.X", 'sent_at' => now(),
+        ]);
+
+        (require database_path('migrations/2026_11_26_000002_tidy_bsb_whatsapp_reactions.php'))->up();
+
+        $this->assertSame('👍', $message->fresh()->message);
+        $this->assertNull($message->fresh()->media);
+        $this->assertSame('Reacted 👍', $conversation->fresh()->snippet);
+    }
+
     public function test_status_for_a_number_that_never_wrote_is_ignored(): void
     {
         $this->deliver($this->statusEvent('wamid.CAMPAIGN', 'delivered', '2026-07-01T12:00:00+00:00', null, '96171999999'))

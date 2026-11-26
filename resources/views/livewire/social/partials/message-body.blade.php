@@ -1,11 +1,13 @@
 {{-- Inside a chat bubble: attached file, text, time and (outgoing WhatsApp) delivery status. Expects $m. --}}
 @php
     $media = $m->media ?? [];
-    $hasFile = $m->type && $m->type !== 'text';
+    $isReaction = $m->type === 'reaction';
+    $hasFile = $m->hasFile();
     $src = $hasFile && $m->hasViewableMedia() ? route('social.media', $m) : null;
     $mime = strtolower((string) ($media['mime_type'] ?? ''));
     // BSB fills voice notes with "🎤 *Voice Message*": the player says it already.
-    $text = $m->type === 'audio' ? null : $m->message;
+    $text = $m->type === 'audio' || $isReaction ? null : $m->message;
+    $emoji = $isReaction ? $m->reactionEmoji() : null;
     $status = [
         'sent' => ['check', 'Sent'],
         'delivered' => ['checks', 'Delivered'],
@@ -37,7 +39,16 @@
     </div>
 @endif
 
-@if($text)
+@if($isReaction)
+    <p class="flex items-center gap-1.5">
+        @if($emoji)
+            <span class="text-2xl leading-none">{{ $emoji }}</span>
+            <span class="opacity-80">Reacted to a message</span>
+        @else
+            <span class="italic opacity-80">Removed a reaction</span>
+        @endif
+    </p>
+@elseif($text)
     <p class="whitespace-pre-line break-words">{{ $text }}</p>
 @elseif(!$hasFile)
     @if($m->from_page && $m->status)

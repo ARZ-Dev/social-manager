@@ -92,7 +92,7 @@
             </div>
         @endif
         <p class="border-t border-slate-100 px-5 py-2.5 text-xs text-slate-500 dark:border-slate-800 dark:text-slate-400">
-            Measured from a customer's first unanswered message to the next reply from the Page or account, using the latest 50 messages fetched per conversation.
+            Measured from a customer's first unanswered message to the next reply from the Page or account, using the latest 50 messages fetched per conversation{{ $hasBsb ? ', and every WhatsApp message received. WhatsApp reactions and failed replies don’t count' : '' }}.
         </p>
     </div>
 </div>

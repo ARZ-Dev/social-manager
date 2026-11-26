@@ -1046,7 +1046,7 @@ class SocialMediaView extends Component
             ->join('social_conversations', 'social_conversations.id', '=', 'social_messages.social_conversation_id')
             ->whereIn('social_conversations.social_account_id', $socialIds)
             ->where('social_messages.sent_at', '>=', $since)
-            ->get(['social_messages.social_conversation_id', 'social_messages.from_page', 'social_messages.sent_at', 'social_messages.status', 'social_conversations.social_account_id']);
+            ->get(['social_messages.social_conversation_id', 'social_messages.from_page', 'social_messages.sent_at', 'social_messages.status', 'social_messages.type', 'social_conversations.social_account_id']);
         $stats = ResponseTimes::perConversation($messages, $since);
         $accountOf = $messages->pluck('social_account_id', 'social_conversation_id');
         $awaitingIds = array_keys(array_filter($stats, fn ($c) => $c['awaitingSince'] !== null));

@@ -7,6 +7,8 @@ use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 /**
  * An account linked to a company: a Facebook Page, Instagram business account,
@@ -34,7 +36,7 @@ class SocialAccount extends Model
 
     protected $guarded = [];
 
-    protected $hidden = ['access_token'];
+    protected $hidden = ['access_token', 'webhook_secret'];
 
     /** Periods offered in the Fetch dialog: value => label (days, or 'custom'). */
     public const FETCH_PERIODS = ['7' => '7 days', '30' => '30 days', '90' => '90 days', '180' => '6 months', '365' => '1 year', 'custom' => 'Custom'];
@@ -46,6 +48,8 @@ class SocialAccount extends Model
     {
         return [
             'access_token' => 'encrypted',
+            'webhook_secret' => 'encrypted',
+            'webhook_last_at' => 'datetime',
             'token_expires_at' => 'datetime',
             'last_synced_at' => 'datetime',
             'sync_queued_at' => 'datetime',
@@ -76,6 +80,7 @@ class SocialAccount extends Model
             $account->adBreakdowns()->delete();
             $account->adDailyStats()->delete();
             $account->bulkMessages()->delete();
+            Storage::disk('local')->deleteDirectory(SocialMessage::MEDIA_DIR . '/' . $account->id);
         });
     }
 
@@ -102,6 +107,19 @@ class SocialAccount extends Model
         $creds = json_decode($this->access_token, true);
 
         return is_array($creds) && filled($creds['api_key'] ?? null) && filled($creds['api_secret'] ?? null) ? $creds : null;
+    }
+
+    /**
+     * The URL BSB posts this account's WhatsApp messages to (created on first use).
+     * BSB's payload doesn't say which account it's for, so the URL does.
+     */
+    public function bsbWebhookUrl(): string
+    {
+        if (!$this->webhook_key) {
+            $this->forceFill(['webhook_key' => Str::random(40)])->save();
+        }
+
+        return route('webhooks.bsb', $this->webhook_key);
     }
 
     /** external_id for a BSB account: a short fingerprint of its API key. */

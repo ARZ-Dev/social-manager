@@ -32,7 +32,7 @@
                     'overview' => ['Overview', 'chart-area-line', $hasSocial],
                     'posts' => ['Posts', 'photo', $hasSocial],
                     'audience' => ['Audience', 'users-group', $hasSocial],
-                    'messages' => ['Messages', 'messages', $hasSocial],
+                    'messages' => ['Messages', 'messages', $hasSocial || $hasBsb],
                     'ads' => ['Ads', 'speakerphone', $hasAds],
                     'sms' => ['SMS & WhatsApp', 'message-2', $hasBsb],
                 ];
@@ -71,6 +71,10 @@
 
         @if($showBsbConnect)
             @include('livewire.social.partials.bsb-connect-modal')
+        @endif
+
+        @if($webhookSetup)
+            @include('livewire.social.partials.bsb-webhook-modal', ['acc' => $webhookSetup])
         @endif
     @endif
 </div>

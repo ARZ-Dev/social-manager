@@ -36,7 +36,8 @@
             <ul class="mt-1 list-disc space-y-0.5 pl-4">
                 <li>Balance, and every message's recipient, channel (SMS / WhatsApp) and delivery status.</li>
                 <li>Only messages sent <em>today</em>: the app checks every {{ config('bsb.poll_minutes') }} minutes and keeps its own log from now on.</li>
-                <li>Not the message text, sender ID or replies: BSB's API doesn't offer them.</li>
+                <li>Not the text or sender ID of these messages: BSB's API doesn't offer them.</li>
+                <li>WhatsApp chats (customers' messages and your replies' status) can be added afterwards from the account's card: <strong>Set up</strong> under WhatsApp chats.</li>
             </ul>
         </div>
     </form>

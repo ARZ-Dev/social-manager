@@ -23,4 +23,8 @@ return [
 
     // Automatic check interval in minutes (also used to warn when checks stop).
     'poll_minutes' => (int) env('BSB_POLL_MINUTES', 10),
+
+    // WhatsApp chats (webhook): files of incoming messages bigger than this aren't kept.
+    // BSB's own link to them still works for 7 days.
+    'media_max_mb' => (int) env('BSB_MEDIA_MAX_MB', 16),
 ];

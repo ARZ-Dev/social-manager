@@ -52,8 +52,9 @@ today's messages are fetched straight away.
 
 BSB's API ([documentation](https://www.bestsmsbulk.com/pro-support/api_documentation_bsb))
 reports, for **today's messages only**, each message's ID, recipient and delivery status
-(`DELIVERED`, `SENT`, `PENDING`, `FAILED`), plus the SMS and WhatsApp balance. It has no
-message history, message text, sender ID or replies.
+(`DELIVERED`, `SENT`, `PENDING`, `FAILED`, and `READ` for WhatsApp, though BSB doesn't
+document it), plus the SMS and WhatsApp balance. It has no message history, text or sender ID.
+Customers' WhatsApp messages come through a separate webhook: see **WhatsApp chats** below.
 
 So the app keeps its own log:
 
@@ -74,13 +75,52 @@ message, searchable by number and filterable by channel and status.
 "First seen" is when a check first saw a message: at most one check interval after it was
 sent while checks run.
 
+### WhatsApp chats (BSB webhook)
+
+BSB's **WhatsApp Messaging API** (in BSB: Developers → WhatsApp Messaging API) posts every
+WhatsApp message a customer sends, and every status change of the messages you send, to a URL
+of ours. The chats then appear in the **Messages** tab next to Messenger and Instagram, and
+count in the response times.
+
+**Setup**, per BSB account (needs `social-connect`): SMS & WhatsApp tab → the account's card →
+**WhatsApp chats: Set up**. The dialog shows the account's webhook URL
+(`{APP_URL}/api/webhooks/bsb/{key}`; each account has its own, because BSB's payload doesn't
+say which account it's for). Then, in BSB:
+
+1. Paste the URL as **Webhook URL** (it must be the live site's public HTTPS address).
+2. Tick **Enable webhook delivery**, **Notify on incoming messages** and **Notify on message
+   status changes**, and save.
+3. Copy the **Webhook signing secret** BSB generates into the dialog and save. From then on
+   only deliveries with a valid `X-BSB-Signature: sha256=<HMAC-SHA256 of the body>` are
+   accepted (401 otherwise). Before a secret is saved, the unguessable URL is the only check.
+   After **Rotate secret** in BSB, paste the new one.
+4. **Send test** in BSB: the dialog's "Last delivery" updates.
+
+**What is stored**
+
+- `message.received`: the customer's message, keyed on its WhatsApp ID (repeated deliveries
+  are stored once), in a conversation per number (`social_conversations.external_id` =
+  `wa:<number>`). Photos, voice notes, videos and documents are downloaded right after the
+  webhook answers (BSB's link expires after 7 days) to `storage/app/bsb-media/<account id>/`,
+  up to `BSB_MEDIA_MAX_MB` (16 MB) each, and served only to people who can see the company.
+  Only links on `bestsmsbulk.com` are downloaded.
+- `message.status`: the status of an outgoing message (sent → delivered → read, or failed with
+  BSB's reason). Statuses never go backwards. **BSB doesn't include the text** of messages
+  you send, so they show as "Message sent from BSB (text not shared)". Statuses of messages
+  to numbers that never wrote to you (e.g. campaigns) are ignored, so they don't fill the inbox.
+- There is no history: chats start from the moment the webhook is on.
+
+The Messages tab is read-only; reply from BSB's Unified Inbox. Disconnecting the BSB account
+deletes its chats and their files.
+
 ## Response times (Messages tab)
 
-For Facebook Messenger and Instagram Direct conversations, the Messages tab now shows,
+For Facebook Messenger, Instagram Direct and BSB WhatsApp conversations, the Messages tab shows,
 for the last 7 / 30 / 90 days: median first response, average response time, reply rate,
 share answered within an hour, a distribution, one row per account, and which
 conversations are still waiting for a reply (with an **Awaiting reply** filter).
 
 A response runs from a customer's first unanswered message to the next message from the
-Page / account. It uses the latest 50 messages fetched per conversation. BSB conversations
-aren't included: BSB's API doesn't report replies.
+Page / account. Meta conversations use the latest 50 messages fetched per conversation;
+WhatsApp chats use every message received by the webhook. A WhatsApp reply that failed
+doesn't count as an answer.

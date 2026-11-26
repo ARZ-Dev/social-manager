@@ -13,6 +13,7 @@ use App\Livewire\Social\SocialMediaView;
 use App\Livewire\Social\SocialConnectSelect;
 use App\Http\Controllers\SocialConnectController;
 use App\Http\Controllers\GoogleAdsConnectController;
+use App\Http\Controllers\SocialMessageMediaController;
 use App\Livewire\Social\GoogleAdsConnectSelect;
 
 // The root opens the admin; guests are sent on to the login page by the auth middleware.
@@ -68,6 +69,9 @@ Route::middleware(['auth'])->group(function () {
         Route::get('/google/connect', [GoogleAdsConnectController::class, 'redirect'])->name('social.google.connect');
         Route::get('/google/callback', [GoogleAdsConnectController::class, 'callback'])->name('social.google.callback');
         Route::get('/google/select', GoogleAdsConnectSelect::class)->name('social.google.select');
+
+        // Photos, voice notes and files of WhatsApp chats (BSB)
+        Route::get('/media/{message}', [SocialMessageMediaController::class, 'show'])->name('social.media');
     });
 
 

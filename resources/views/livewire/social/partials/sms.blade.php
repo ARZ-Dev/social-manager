@@ -48,12 +48,15 @@
             <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">
                 {{ $acc->last_synced_at ? 'Checked ' . $acc->last_synced_at->diffForHumans() : 'Not checked yet' }}
             </p>
-            {{-- WhatsApp chats (webhook) --}}
+            {{-- WhatsApp chats (webhook), with its on/off switch once set up --}}
+            @php $chatsOn = $acc->whatsAppChatsOn(); @endphp
             <div class="mt-3 flex items-center justify-between gap-2 border-t border-slate-100 pt-3 dark:border-slate-800">
                 <span class="flex min-w-0 items-center gap-1.5 text-xs text-slate-600 dark:text-slate-300">
-                    <x-icon name="brand-whatsapp" class="size-4 shrink-0 text-[#25D366]" />
+                    <x-icon name="brand-whatsapp" @class(['size-4 shrink-0', 'text-[#25D366]' => $chatsOn, 'text-slate-400' => !$chatsOn]) />
                     <span class="truncate">
-                        @if($acc->webhook_last_at)
+                        @if(!$chatsOn)
+                            WhatsApp chats off
+                        @elseif($acc->webhook_last_at)
                             Chats on · last delivery {{ $acc->webhook_last_at->diffForHumans() }}
                         @elseif($acc->webhook_key)
                             Chats: waiting for BSB
@@ -63,7 +66,24 @@
                     </span>
                 </span>
                 @can('social-connect')
-                    <button type="button" class="link shrink-0 text-xs" wire:click="openWebhookSetup({{ $acc->id }})">{{ $acc->webhook_key ? 'Settings' : 'Set up' }}</button>
+                    <span class="flex shrink-0 items-center gap-3">
+                        @if($chatsOn)
+                            <button type="button" class="link text-xs" wire:click="openWebhookSetup({{ $acc->id }})">{{ $acc->webhook_key ? 'Settings' : 'Set up' }}</button>
+                        @endif
+                        @if($acc->webhook_key || !$chatsOn)
+                            <button type="button" role="switch" aria-checked="{{ $chatsOn ? 'true' : 'false' }}"
+                                aria-label="WhatsApp chats for {{ $acc->display_name }}" title="{{ $chatsOn ? 'Turn WhatsApp chats off' : 'Turn WhatsApp chats on' }}"
+                                wire:click="toggleWhatsAppChats({{ $acc->id }})" wire:loading.attr="disabled" wire:target="toggleWhatsAppChats({{ $acc->id }})"
+                                @class([
+                                    'relative inline-flex h-5 w-9 items-center rounded-full transition-colors disabled:opacity-50',
+                                    'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
+                                    'bg-brand-600 dark:bg-brand-500' => $chatsOn,
+                                    'bg-slate-300 dark:bg-slate-700' => !$chatsOn,
+                                ])>
+                                <span @class(['inline-block size-4 rounded-full bg-white shadow transition-transform', 'translate-x-4' => $chatsOn, 'translate-x-0.5' => !$chatsOn])></span>
+                            </button>
+                        @endif
+                    </span>
                 @endcan
             </div>
         </div>

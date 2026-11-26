@@ -24,6 +24,10 @@ class BsbWebhookController extends Controller
         if (!$account) {
             return response()->json(['ok' => false, 'error' => 'Unknown webhook URL'], 404);
         }
+        // Switched off in the app: accept and drop, so BSB doesn't count failures and retry.
+        if (!$account->whatsAppChatsOn()) {
+            return response()->json(['ok' => true, 'result' => 'disabled']);
+        }
 
         $raw = $request->getContent();
         if (filled($account->webhook_secret) && !$this->signatureValid($raw, (string) $request->header('X-BSB-Signature'), $account->webhook_secret)) {

@@ -115,6 +115,12 @@ say which account it's for). Then, in BSB:
 - There is no history: chats start from the moment the webhook is on. BSB has no API to read
   older chats, and **Fetch data** doesn't touch chats (it only reads today's delivery statuses).
 
+**Turning chats off**: the switch next to **Settings** on the account's card (needs
+`social-connect`). While off, the webhook answers BSB with `{"ok":true,"result":"disabled"}`
+and stores nothing, and the account's chats, their files and their response times are hidden.
+Nothing is deleted: turning it back on shows the chats again, but what BSB sent while it was off
+is lost. To stop BSB sending at all, also untick **Enable webhook delivery** in BSB.
+
 The Messages tab is read-only; reply from BSB's Unified Inbox. Disconnecting the BSB account
 deletes its chats and their files.
 

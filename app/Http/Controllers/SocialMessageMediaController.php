@@ -23,8 +23,8 @@ class SocialMessageMediaController extends Controller
         abort_unless($request->user()->can('social-list'), 403);
 
         $message->loadMissing('conversation');
-        $visible = SocialAccount::visibleTo($request->user())->whereKey($message->conversation?->social_account_id)->exists();
-        abort_unless($visible, 404);
+        $account = SocialAccount::visibleTo($request->user())->find($message->conversation?->social_account_id);
+        abort_unless($account && $account->whatsAppChatsOn(), 404); // hidden while the account's chats are off
 
         $media = $message->media ?? [];
         $mime = strtolower(explode(';', (string) ($media['mime_type'] ?? 'application/octet-stream'))[0]);

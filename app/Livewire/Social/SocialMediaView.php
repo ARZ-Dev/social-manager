@@ -184,8 +184,8 @@ class SocialMediaView extends Component
             $this->tab = 'ads';
             $this->adPlatform = $acc->platform === SocialAccount::GOOGLE_ADS ? 'google' : 'meta';
         } elseif ($acc?->platform === SocialAccount::BSB) {
-            // Its WhatsApp chats are in Messages; everything else in SMS & WhatsApp.
-            $this->tab = $this->tab === 'messages' ? 'messages' : 'sms';
+            // Its WhatsApp chats (when on) are in Messages; everything else in SMS & WhatsApp.
+            $this->tab = $this->tab === 'messages' && $acc->whatsAppChatsOn() ? 'messages' : 'sms';
         } elseif ($acc && in_array($this->tab, ['ads', 'sms'], true)) {
             $this->tab = 'overview';
         }
@@ -460,6 +460,28 @@ class SocialMediaView extends Component
         $this->reset('webhookAccount', 'webhookSecret');
     }
 
+    /**
+     * Switch a BSB account's WhatsApp chats on or off. Off: the webhook drops what
+     * BSB sends, and the chats and their files are hidden. Nothing is deleted.
+     */
+    public function toggleWhatsAppChats($id)
+    {
+        $this->authorize('social-connect');
+        $account = $this->accountsQuery()->where('platform', SocialAccount::BSB)->findOrFail($id);
+
+        $on = !$account->whatsAppChatsOn();
+        $account->update(['webhook_enabled' => $on]);
+        $this->reset('webhookAccount', 'webhookSecret', 'openConversation');
+
+        $this->dispatch('swal:success', $on ? [
+            'title' => 'WhatsApp chats on',
+            'text' => 'Chats received before are back in Messages. Messages BSB sent while they were off are not.',
+        ] : [
+            'title' => 'WhatsApp chats off',
+            'text' => 'BSB\'s deliveries are ignored and the chats are hidden; nothing is deleted. To stop BSB sending them, also untick "Enable webhook delivery" in BSB.',
+        ]);
+    }
+
     /** Save the signing secret BSB shows after the webhook is saved there. */
     public function saveWebhookSecret()
     {
@@ -722,10 +744,12 @@ class SocialMediaView extends Component
         $hasGoogleAds = $platforms->contains(SocialAccount::GOOGLE_ADS);
         $hasAds = $hasMetaAds || $hasGoogleAds;
         $hasBsb = $platforms->contains(SocialAccount::BSB);
+        // WhatsApp chats only from BSB accounts whose chats are switched on.
+        $hasWhatsAppChats = $accounts->contains(fn ($a) => $a->whatsAppChatsOn());
 
         // Keep the tab on something this company has.
         $available = array_keys(array_filter([
-            'overview' => $hasSocial, 'posts' => $hasSocial, 'audience' => $hasSocial, 'messages' => $hasSocial || $hasBsb,
+            'overview' => $hasSocial, 'posts' => $hasSocial, 'audience' => $hasSocial, 'messages' => $hasSocial || $hasWhatsAppChats,
             'ads' => $hasAds, 'sms' => $hasBsb,
         ]));
         if ($available && !in_array($this->tab, $available, true)) {
@@ -742,6 +766,7 @@ class SocialMediaView extends Component
         $adIds = $scoped->where('platform', SocialAccount::ADS)->pluck('id');
         $googleIds = $scoped->where('platform', SocialAccount::GOOGLE_ADS)->pluck('id');
         $bsbIds = $scoped->where('platform', SocialAccount::BSB)->pluck('id');
+        $chatBsbIds = $scoped->filter(fn ($a) => $a->whatsAppChatsOn())->pluck('id');
         $hasMetaAccounts = $platforms->intersect(SocialAccount::META)->isNotEmpty();
 
         $data = [
@@ -755,6 +780,7 @@ class SocialMediaView extends Component
             'hasMetaAds' => $hasMetaAds,
             'hasGoogleAds' => $hasGoogleAds,
             'hasBsb' => $hasBsb,
+            'hasWhatsAppChats' => $hasWhatsAppChats,
             'metaConfigured' => $company->hasMetaApp(),
             'googleConfigured' => $company->hasGoogleAdsApp(),
             // A missing app only matters once accounts depend on it.
@@ -777,8 +803,8 @@ class SocialMediaView extends Component
                 'overview' => $this->overviewData($scoped->whereIn('id', $socialIds)->values()),
                 'posts' => $this->postsData($scoped->whereIn('id', $socialIds)->values(), $accounts),
                 'audience' => $this->audienceData($scoped->whereIn('id', $socialIds)->values()),
-                // Messenger, Instagram and the WhatsApp chats of BSB accounts
-                'messages' => $this->messagesData($socialIds->merge($bsbIds)),
+                // Messenger, Instagram and the WhatsApp chats of BSB accounts that have them on
+                'messages' => $this->messagesData($socialIds->merge($chatBsbIds)),
                 'ads' => $this->adPlatform === 'google' ? $this->googleAdsData($googleIds) : $this->adsData($adIds),
                 'sms' => $this->bulkData($bsbIds),
             };

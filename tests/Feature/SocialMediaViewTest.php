@@ -133,6 +133,17 @@ class SocialMediaViewTest extends TestCase
             ->assertSee(route('social.media', $voice))
             ->assertDontSee('*Voice Message*');
 
+        // An order confirmation to someone who never wrote: listed, found by number, no response time.
+        $oneWay = SocialConversation::create(['social_account_id' => $bsb->id, 'external_id' => 'wa:96171999999',
+            'participant_name' => '+96171999999', 'snippet' => 'Sent from BSB · Read', 'last_message_at' => now()->subMinutes(5)]);
+        $oneWay->messages()->create(['external_id' => 'wamid.order', 'from_page' => true, 'status' => 'read', 'sent_at' => now()->subMinutes(5)]);
+        $inbox = Livewire::actingAs($this->user)->test(SocialMediaView::class)
+            ->call('setTab', 'messages')
+            ->assertSee('Sent from BSB · Read');
+        $this->assertArrayNotHasKey($oneWay->id, $inbox->viewData('responseStats'));
+        $this->assertArrayHasKey($conv->id, $inbox->viewData('responseStats'));
+        $inbox->set('chatSearch', '71999')->assertSee('+96171999999')->assertDontSee('Do you have oat milk');
+
         // Setup dialog: URL, then the signing secret from BSB.
         $page->call('setTab', 'sms')
             ->assertSee('WhatsApp chats not set up')

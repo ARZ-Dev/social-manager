@@ -209,13 +209,42 @@ class BsbWebhookTest extends TestCase
         $this->assertSame('Reacted 👍', $conversation->fresh()->snippet);
     }
 
-    public function test_status_for_a_number_that_never_wrote_is_ignored(): void
+    public function test_message_to_a_number_that_never_wrote_starts_a_chat(): void
     {
-        $this->deliver($this->statusEvent('wamid.CAMPAIGN', 'delivered', '2026-07-01T12:00:00+00:00', null, '96171999999'))
+        // An order confirmation: only its statuses arrive.
+        $this->deliver($this->statusEvent('wamid.ORDER', 'delivered', '2026-07-01T12:00:00+00:00', null, '96171999999'))
+            ->assertOk()->assertJson(['result' => 'status']);
+
+        $conversation = SocialConversation::sole();
+        $this->assertSame('wa:96171999999', $conversation->external_id);
+        $this->assertSame('+96171999999', $conversation->participant_name);
+        $this->assertSame('Sent from BSB · Delivered', $conversation->snippet);
+        $this->assertSame('2026-07-01 12:00:00', $conversation->last_message_at->utc()->toDateTimeString());
+        $this->assertTrue(SocialMessage::sole()->from_page);
+
+        $this->deliver($this->statusEvent('wamid.ORDER', 'read', '2026-07-01T12:05:00+00:00', null, '96171999999'))->assertOk();
+        $this->assertSame('Sent from BSB · Read', $conversation->fresh()->snippet);
+
+        // The customer answers: the chat takes their name, their message is the latest.
+        $reply = $this->textEvent('wamid.ANSWER', '2026-07-01T12:30:00+00:00', 'Thanks! When will it arrive?');
+        $reply['data']['from'] = '96171999999';
+        $this->deliver($reply)->assertOk();
+        $conversation->refresh();
+        $this->assertSame('Jane', $conversation->participant_name);
+        $this->assertSame('Thanks! When will it arrive?', $conversation->snippet);
+
+        // A late status of the older message doesn't take the preview back.
+        $this->deliver($this->statusEvent('wamid.ORDER', 'sent', '2026-07-01T11:59:58+00:00', null, '96171999999'))->assertOk();
+        $this->assertSame('Thanks! When will it arrive?', $conversation->fresh()->snippet);
+        $this->assertSame(1, SocialConversation::count());
+    }
+
+    public function test_status_without_a_number_for_an_unknown_message_is_ignored(): void
+    {
+        $this->deliver($this->statusEvent('wamid.X', 'delivered', '2026-07-01T12:00:00+00:00', null, ''))
             ->assertOk()->assertJson(['result' => 'ignored']);
 
         $this->assertSame(0, SocialConversation::count());
-        $this->assertSame(0, SocialMessage::count());
     }
 
     public function test_media_is_only_served_to_people_who_see_the_company(): void

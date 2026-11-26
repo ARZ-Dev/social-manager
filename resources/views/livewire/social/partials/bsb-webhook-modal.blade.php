@@ -77,8 +77,8 @@
             <p class="font-medium text-slate-800 dark:text-slate-200">What shows up in Messages</p>
             <ul class="mt-1 list-disc space-y-0.5 pl-4">
                 <li>Every WhatsApp message customers send, with photos, voice notes, videos and documents, from now on. BSB doesn't send older chats.</li>
-                <li>Replies sent from BSB appear with their delivery and read status, but without their text: BSB's webhook doesn't include it.</li>
-                <li>Only chats with numbers that wrote to you, so bulk campaigns don't fill the inbox.</li>
+                <li>Every message sent from BSB, with its delivery and read status but without its text: BSB's webhook doesn't include it.</li>
+                <li>Messages to numbers that never wrote to you (order confirmations, campaigns) get their own chat too.</li>
             </ul>
         </div>
     </div>

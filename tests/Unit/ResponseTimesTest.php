@@ -64,6 +64,23 @@ class ResponseTimesTest extends TestCase
         $this->assertSame(1, $summary['buckets']['15–60 min']);
     }
 
+    public function test_a_failed_reply_does_not_answer(): void
+    {
+        $since = Carbon::parse('2026-11-01');
+        $failed = (object) ['social_conversation_id' => 1, 'from_page' => true, 'status' => 'failed', 'sent_at' => Carbon::parse('2026-11-10 09:05')];
+        $stats = ResponseTimes::perConversation([
+            $this->msg(1, false, '2026-11-10 09:00'),
+            $failed,
+            $this->msg(1, true, '2026-11-10 09:30'), // the reply that got through
+        ], $since);
+
+        $this->assertSame([1800], $stats[1]['responses']);
+
+        $onlyFailed = ResponseTimes::perConversation([$this->msg(2, false, '2026-11-10 09:00'), (object) (['social_conversation_id' => 2] + (array) $failed)], $since);
+        $this->assertSame([], $onlyFailed[2]['responses']);
+        $this->assertNotNull($onlyFailed[2]['awaitingSince']);
+    }
+
     public function test_summary_of_nothing(): void
     {
         $summary = ResponseTimes::summary([]);

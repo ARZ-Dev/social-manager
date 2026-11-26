@@ -111,6 +111,41 @@ class SocialMediaViewTest extends TestCase
             ->assertDontSee('+96170123456');
     }
 
+    public function test_bsb_whatsapp_chats_show_in_messages_and_can_be_set_up(): void
+    {
+        ['bsb' => $bsb] = $this->seedAccounts();
+        $conv = SocialConversation::create(['social_account_id' => $bsb->id, 'external_id' => 'wa:96170555444',
+            'participant_name' => 'Jane', 'snippet' => '🎤 Voice message', 'last_message_at' => now()->subMinutes(30)]);
+        $conv->messages()->create(['external_id' => 'wamid.1', 'from_page' => false, 'message' => 'Do you have oat milk?', 'type' => 'text', 'sent_at' => now()->subHour()]);
+        $conv->messages()->create(['external_id' => 'wamid.2', 'from_page' => true, 'status' => 'read', 'sent_at' => now()->subHour()->addMinutes(4)]);
+        $voice = $conv->messages()->create(['external_id' => 'wamid.3', 'from_page' => false, 'type' => 'audio', 'message' => '🎤 *Voice Message*',
+            'media' => ['voice' => true, 'download_url' => 'https://www.bestsmsbulk.com/x', 'expires_at' => now()->addDays(6)->toIso8601String()],
+            'sent_at' => now()->subMinutes(30)]);
+
+        $page = Livewire::actingAs($this->user)->test(SocialMediaView::class)
+            ->call('setTab', 'messages')
+            ->assertSee('Messenger, Instagram Direct and WhatsApp')
+            ->assertSee('Main BSB') // its own row in the response times
+            ->call('openChat', $conv->id)
+            ->assertSee('WhatsApp · Main BSB · +96170555444')
+            ->assertSee('Do you have oat milk?')
+            ->assertSee('Message sent from BSB (text not shared)')
+            ->assertSee(route('social.media', $voice))
+            ->assertDontSee('*Voice Message*');
+
+        // Setup dialog: URL, then the signing secret from BSB.
+        $page->call('setTab', 'sms')
+            ->assertSee('WhatsApp chats not set up')
+            ->call('openWebhookSetup', $bsb->id)
+            ->assertSee('/api/webhooks/bsb/' . $bsb->fresh()->webhook_key)
+            ->assertSee('No signing secret yet')
+            ->set('webhookSecret', 'short')->call('saveWebhookSecret')->assertHasErrors(['webhookSecret'])
+            ->set('webhookSecret', ' a-long-signing-secret-from-bsb ')->call('saveWebhookSecret')->assertHasNoErrors()
+            ->assertSee('Signature checked');
+
+        $this->assertSame('a-long-signing-secret-from-bsb', $bsb->fresh()->webhook_secret);
+    }
+
     public function test_selecting_an_account_opens_its_tab(): void
     {
         ['google' => $google, 'bsb' => $bsb] = $this->seedAccounts();

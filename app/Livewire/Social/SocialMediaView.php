@@ -98,6 +98,10 @@ class SocialMediaView extends Component
     public string $bsbKey = '';
     public string $bsbSecret = '';
 
+    // "WhatsApp chats" setup dialog (BSB webhook)
+    public ?int $webhookAccount = null;
+    public string $webhookSecret = '';
+
     public ?int $openPost = null;
     public ?int $openConversation = null;
     public ?int $breakdownAd = null;
@@ -140,7 +144,7 @@ class SocialMediaView extends Component
 
         $this->company = Company::visibleTo(auth()->user())->findOrFail($id)->id;
         $this->reset('account', 'trendMetric', 'postSearch', 'chatSearch', 'companySearch', 'openPost', 'openConversation', 'breakdownAd',
-            'adPlatform', 'chatFilter', 'smsStatus', 'smsRoute', 'smsSearch');
+            'adPlatform', 'chatFilter', 'smsStatus', 'smsRoute', 'smsSearch', 'webhookAccount', 'webhookSecret');
         $this->syncing = $this->runningSync()->exists();
         $this->resetPage();
     }
@@ -151,7 +155,7 @@ class SocialMediaView extends Component
         abort_unless(auth()->user()->canAccessAllCompanies(), 403);
 
         $this->reset('company', 'account', 'trendMetric', 'postSearch', 'chatSearch', 'openPost', 'openConversation', 'breakdownAd', 'syncing',
-            'adPlatform', 'chatFilter', 'smsStatus', 'smsRoute', 'smsSearch');
+            'adPlatform', 'chatFilter', 'smsStatus', 'smsRoute', 'smsSearch', 'webhookAccount', 'webhookSecret');
         $this->tab = 'overview';
         $this->resetPage();
     }
@@ -180,7 +184,8 @@ class SocialMediaView extends Component
             $this->tab = 'ads';
             $this->adPlatform = $acc->platform === SocialAccount::GOOGLE_ADS ? 'google' : 'meta';
         } elseif ($acc?->platform === SocialAccount::BSB) {
-            $this->tab = 'sms';
+            // Its WhatsApp chats are in Messages; everything else in SMS & WhatsApp.
+            $this->tab = $this->tab === 'messages' ? 'messages' : 'sms';
         } elseif ($acc && in_array($this->tab, ['ads', 'sms'], true)) {
             $this->tab = 'overview';
         }
@@ -436,6 +441,42 @@ class SocialMediaView extends Component
         $this->showBsbConnect = true;
     }
 
+    // ------------------------------------------------------ WhatsApp chats setup
+
+    /** Open the setup of a BSB account's WhatsApp chats webhook (creates its URL). */
+    public function openWebhookSetup($id)
+    {
+        $this->authorize('social-connect');
+        $account = $this->accountsQuery()->where('platform', SocialAccount::BSB)->findOrFail($id);
+        $account->bsbWebhookUrl();
+
+        $this->webhookAccount = $account->id;
+        $this->webhookSecret = '';
+        $this->resetValidation();
+    }
+
+    public function closeWebhookSetup()
+    {
+        $this->reset('webhookAccount', 'webhookSecret');
+    }
+
+    /** Save the signing secret BSB shows after the webhook is saved there. */
+    public function saveWebhookSecret()
+    {
+        $this->authorize('social-connect');
+        $account = $this->accountsQuery()->where('platform', SocialAccount::BSB)->findOrFail($this->webhookAccount);
+
+        $this->webhookSecret = trim($this->webhookSecret);
+        $this->validate(['webhookSecret' => ['required', 'string', 'min:16', 'max:255']], [], ['webhookSecret' => 'signing secret']);
+
+        $account->update(['webhook_secret' => $this->webhookSecret]);
+        $this->webhookSecret = '';
+        $this->dispatch('swal:success', [
+            'title' => 'Signing secret saved',
+            'text' => 'From now on only deliveries signed by BSB are accepted. Use "Send test" in BSB to check.',
+        ]);
+    }
+
     public function closeBsbConnect()
     {
         $this->showBsbConnect = false;
@@ -684,7 +725,7 @@ class SocialMediaView extends Component
 
         // Keep the tab on something this company has.
         $available = array_keys(array_filter([
-            'overview' => $hasSocial, 'posts' => $hasSocial, 'audience' => $hasSocial, 'messages' => $hasSocial,
+            'overview' => $hasSocial, 'posts' => $hasSocial, 'audience' => $hasSocial, 'messages' => $hasSocial || $hasBsb,
             'ads' => $hasAds, 'sms' => $hasBsb,
         ]));
         if ($available && !in_array($this->tab, $available, true)) {
@@ -728,6 +769,7 @@ class SocialMediaView extends Component
             'syncLeft' => $this->syncing ? $this->runningSync()->count() : 0,
             'syncRun' => $this->syncing ? $this->runAccounts($runId = $this->currentRunId()) : collect(),
             'syncStates' => $this->syncing ? $this->runStates($runId ?? null) : [],
+            'webhookSetup' => $this->webhookAccount ? $accounts->where('platform', SocialAccount::BSB)->firstWhere('id', $this->webhookAccount) : null,
         ];
 
         if ($accounts->isNotEmpty()) {
@@ -735,7 +777,8 @@ class SocialMediaView extends Component
                 'overview' => $this->overviewData($scoped->whereIn('id', $socialIds)->values()),
                 'posts' => $this->postsData($scoped->whereIn('id', $socialIds)->values(), $accounts),
                 'audience' => $this->audienceData($scoped->whereIn('id', $socialIds)->values()),
-                'messages' => $this->messagesData($socialIds),
+                // Messenger, Instagram and the WhatsApp chats of BSB accounts
+                'messages' => $this->messagesData($socialIds->merge($bsbIds)),
                 'ads' => $this->adPlatform === 'google' ? $this->googleAdsData($googleIds) : $this->adsData($adIds),
                 'sms' => $this->bulkData($bsbIds),
             };
@@ -1003,7 +1046,7 @@ class SocialMediaView extends Component
             ->join('social_conversations', 'social_conversations.id', '=', 'social_messages.social_conversation_id')
             ->whereIn('social_conversations.social_account_id', $socialIds)
             ->where('social_messages.sent_at', '>=', $since)
-            ->get(['social_messages.social_conversation_id', 'social_messages.from_page', 'social_messages.sent_at', 'social_conversations.social_account_id']);
+            ->get(['social_messages.social_conversation_id', 'social_messages.from_page', 'social_messages.sent_at', 'social_messages.status', 'social_conversations.social_account_id']);
         $stats = ResponseTimes::perConversation($messages, $since);
         $accountOf = $messages->pluck('social_account_id', 'social_conversation_id');
         $awaitingIds = array_keys(array_filter($stats, fn ($c) => $c['awaitingSince'] !== null));

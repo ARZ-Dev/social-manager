@@ -44,6 +44,10 @@ class ResponseTimes
             $waitingSince = null;
 
             foreach ($list->sortBy(fn ($m) => $m->sent_at->getTimestamp())->values() as $m) {
+                // A reply that never reached the customer (WhatsApp "failed") doesn't answer them.
+                if ($m->from_page && ($m->status ?? null) === 'failed') {
+                    continue;
+                }
                 if (!$m->from_page) {
                     $waitingSince ??= $m->sent_at;
                     $entry['inbound'] = $entry['inbound'] || $m->sent_at->gte($since);

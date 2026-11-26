@@ -48,6 +48,24 @@
             <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">
                 {{ $acc->last_synced_at ? 'Checked ' . $acc->last_synced_at->diffForHumans() : 'Not checked yet' }}
             </p>
+            {{-- WhatsApp chats (webhook) --}}
+            <div class="mt-3 flex items-center justify-between gap-2 border-t border-slate-100 pt-3 dark:border-slate-800">
+                <span class="flex min-w-0 items-center gap-1.5 text-xs text-slate-600 dark:text-slate-300">
+                    <x-icon name="brand-whatsapp" class="size-4 shrink-0 text-[#25D366]" />
+                    <span class="truncate">
+                        @if($acc->webhook_last_at)
+                            Chats on · last delivery {{ $acc->webhook_last_at->diffForHumans() }}
+                        @elseif($acc->webhook_key)
+                            Chats: waiting for BSB
+                        @else
+                            WhatsApp chats not set up
+                        @endif
+                    </span>
+                </span>
+                @can('social-connect')
+                    <button type="button" class="link shrink-0 text-xs" wire:click="openWebhookSetup({{ $acc->id }})">{{ $acc->webhook_key ? 'Settings' : 'Set up' }}</button>
+                @endcan
+            </div>
         </div>
     @endforeach
 </div>
@@ -256,7 +274,7 @@
         @endif
     @endif
     <p class="border-t border-slate-100 px-5 py-2.5 text-xs text-slate-500 dark:border-slate-800 dark:text-slate-400">
-        BSB's API reports each message's ID, recipient and delivery status only: no text, sender ID or replies.
+        BSB's API reports each message's ID, recipient and delivery status only: no text or sender ID. WhatsApp replies from customers are in Messages once chats are set up.
         "First seen" is when a check first saw the message, at most {{ config('bsb.poll_minutes') }} minutes after it was sent while automatic checks run.
     </p>
 </div>

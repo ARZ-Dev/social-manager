@@ -47,7 +47,7 @@
         <div class="card-header">
             <div>
                 <h2 class="card-title">By account</h2>
-                <p class="text-xs text-slate-500 dark:text-slate-400">Messenger and Instagram Direct, last {{ $days }} days</p>
+                <p class="text-xs text-slate-500 dark:text-slate-400">{{ $hasBsb ? 'Messenger, Instagram Direct and WhatsApp' : 'Messenger and Instagram Direct' }}, last {{ $days }} days</p>
             </div>
             @if($rt['awaiting'])
                 <button type="button" wire:click="setChatFilter('awaiting')" class="badge badge-yellow hover:opacity-80">
@@ -125,8 +125,9 @@
                             ])>
                             <span class="relative flex size-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs font-semibold text-slate-500 dark:bg-slate-800 dark:text-slate-300">
                                 {{ strtoupper(mb_substr($conv->participant_name ?? '?', 0, 2)) }}
-                                <span class="absolute -bottom-0.5 -right-0.5 flex size-4 items-center justify-center rounded-full text-white ring-2 ring-white dark:ring-slate-900 {{ $platforms[$conv->account->platform]['dot'] }}">
-                                    <x-icon :name="$platforms[$conv->account->platform]['icon']" class="size-2.5" />
+                                @php $wa = $conv->account->platform === 'bsb'; @endphp
+                                <span class="absolute -bottom-0.5 -right-0.5 flex size-4 items-center justify-center rounded-full text-white ring-2 ring-white dark:ring-slate-900 {{ $wa ? 'bg-[#25D366]' : $platforms[$conv->account->platform]['dot'] }}">
+                                    <x-icon :name="$wa ? 'brand-whatsapp' : $platforms[$conv->account->platform]['icon']" class="size-2.5" />
                                 </span>
                             </span>
                             <span class="min-w-0 flex-1">
@@ -154,7 +155,7 @@
                             @if($chatFilter === 'awaiting')
                                 Nobody is waiting for a reply in the last {{ $days }} days.
                             @elseif(trim($chatSearch) === '')
-                                Messenger and Instagram conversations appear after you fetch data.
+                                Messenger and Instagram conversations appear after you fetch data{{ $hasBsb ? ', WhatsApp chats as soon as customers write (set them up on the BSB card in SMS & WhatsApp)' : '' }}.
                             @endif
                         </x-ui.empty>
                     </li>
@@ -175,8 +176,16 @@
                     <div class="min-w-0 flex-1">
                         <p class="truncate text-sm font-semibold text-slate-900 dark:text-white">{{ $chat->participant_name ?? 'Unknown' }}</p>
                         <p class="flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400">
-                            <x-icon :name="$platforms[$chat->account->platform]['icon']" class="size-3.5" />
-                            {{ $chat->account->platform === 'instagram' ? 'Instagram Direct' : 'Messenger' }} · {{ $chat->account->display_name }}
+                            <x-icon :name="$chat->account->platform === 'bsb' ? 'brand-whatsapp' : $platforms[$chat->account->platform]['icon']" class="size-3.5" />
+                            @php
+                                // WhatsApp chats also show the customer's number ("wa:96170123456").
+                                $chatNumber = $chat->account->platform === 'bsb' && str_starts_with($chat->external_id, 'wa:') ? substr($chat->external_id, 3) : null;
+                            @endphp
+                            {{ collect([
+                                ['instagram' => 'Instagram Direct', 'bsb' => 'WhatsApp'][$chat->account->platform] ?? 'Messenger',
+                                $chat->account->display_name,
+                                $chatNumber ? (ctype_digit($chatNumber) ? '+' . $chatNumber : $chatNumber) : null,
+                            ])->filter()->join(' · ') }}
                         </p>
                     </div>
                 </div>
@@ -196,8 +205,7 @@
                                     'rounded-br-md bg-brand-600 text-white dark:bg-brand-500 dark:text-slate-950' => $m->from_page,
                                     'rounded-bl-md bg-white text-slate-800 dark:bg-slate-800 dark:text-slate-100' => !$m->from_page,
                                 ])>
-                                    <p class="whitespace-pre-line break-words">{{ $m->message ?: '(attachment)' }}</p>
-                                    <p @class(['mt-0.5 text-right text-[10px]', 'text-white/70 dark:text-slate-950/60' => $m->from_page, 'text-slate-400' => !$m->from_page])>{{ $m->sent_at?->format('H:i') }}</p>
+                                    @include('livewire.social.partials.message-body', ['m' => $m])
                                 </div>
                             </div>
                         @endforeach
@@ -205,7 +213,11 @@
                 </div>
 
                 <p class="border-t border-slate-200 px-4 py-2.5 text-xs text-slate-500 dark:border-slate-800 dark:text-slate-400">
-                    Read-only. Shows up to the 50 latest messages. Reply from Meta Business Suite.
+                    @if($chat->account->platform === 'bsb')
+                        Read-only. Customers' messages arrive live from BSB; replies sent from BSB show their status but not their text. Reply from BSB's Unified Inbox.
+                    @else
+                        Read-only. Shows up to the 50 latest messages. Reply from Meta Business Suite.
+                    @endif
                 </p>
             @else
                 <x-ui.empty icon="message-circle" title="Select a conversation" class="my-auto">Pick a conversation to read it here.</x-ui.empty>

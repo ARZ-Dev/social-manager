@@ -13,9 +13,9 @@ use Illuminate\Support\Carbon;
  * - message.received: a customer's WhatsApp message (text, image, video, voice,
  *   document, reaction). Starts or continues the conversation with that number.
  * - message.status: an outgoing message was sent / delivered / read / failed.
- *   BSB doesn't include the text, so the message is stored without it. Only
- *   kept for numbers that already wrote to the business, so bulk campaigns
- *   don't fill the inbox with one-way threads.
+ *   BSB doesn't include the text, so the message is stored without it. Every
+ *   number gets its chat, including ones that never wrote (order confirmations,
+ *   campaigns).
  *
  * Deliveries can repeat and arrive out of order: everything is keyed on the
  * WhatsApp message ID, and statuses never move backwards.
@@ -115,20 +115,19 @@ class BsbWebhookHandler
             ->first();
 
         if (!$message) {
-            $conversation = $contact === '' ? null : SocialConversation::where('social_account_id', $account->id)
-                ->where('external_id', self::PREFIX . $contact)
-                ->first();
-            if (!$conversation) {
-                return ['result' => 'ignored', 'download' => null]; // nobody we chat with: a campaign message
+            if ($contact === '') {
+                return ['result' => 'ignored', 'download' => null]; // no number: no chat to put it in
             }
 
+            // A number that never wrote (an order confirmation, a campaign) gets its chat too.
+            $conversation = SocialConversation::firstOrCreate(
+                ['social_account_id' => $account->id, 'external_id' => mb_substr(self::PREFIX . $contact, 0, 191)],
+                ['participant_name' => $this->displayNumber($contact)]
+            );
             $message = SocialMessage::firstOrCreate(
                 ['social_conversation_id' => $conversation->id, 'external_id' => $messageId],
                 ['from_page' => true, 'sent_at' => $at]
             );
-            if ($conversation->last_message_at === null || $conversation->last_message_at->lt($at)) {
-                $conversation->update(['last_message_at' => $at]);
-            }
         }
 
         $current = SocialMessage::STATUS_RANK[$message->status] ?? 0;
@@ -141,8 +140,28 @@ class BsbWebhookHandler
             $changes['error'] = $status === 'failed' ? $this->error($data['error'] ?? null) : null;
         }
         $message->update($changes);
+        $this->showIfLatest($message);
 
         return ['result' => 'status', 'download' => null];
+    }
+
+    /** When nothing came after this outgoing message, the chat list shows it with its status. */
+    protected function showIfLatest(SocialMessage $message): void
+    {
+        $conversation = $message->conversation;
+        $later = SocialMessage::where('social_conversation_id', $conversation->id)
+            ->whereKeyNot($message->id)
+            ->where('sent_at', '>', $message->sent_at)
+            ->exists();
+        if ($later) {
+            return;
+        }
+
+        $last = $conversation->last_message_at;
+        $conversation->update([
+            'snippet' => 'Sent from BSB · ' . ucfirst((string) $message->status),
+            'last_message_at' => $last && $last->gt($message->sent_at) ? $last : $message->sent_at,
+        ]);
     }
 
     /** BSB's ISO 8601 timestamp, or now when it's missing (its voice example has none). */

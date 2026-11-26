@@ -1046,6 +1046,10 @@ class SocialMediaView extends Component
             ->join('social_conversations', 'social_conversations.id', '=', 'social_messages.social_conversation_id')
             ->whereIn('social_conversations.social_account_id', $socialIds)
             ->where('social_messages.sent_at', '>=', $since)
+            // One-way chats (WhatsApp order confirmations, campaigns) have no response time to measure.
+            ->whereExists(fn ($q) => $q->selectRaw('1')->from('social_messages as customer')
+                ->whereColumn('customer.social_conversation_id', 'social_conversations.id')
+                ->where('customer.from_page', false))
             ->get(['social_messages.social_conversation_id', 'social_messages.from_page', 'social_messages.sent_at', 'social_messages.status', 'social_messages.type', 'social_conversations.social_account_id']);
         $stats = ResponseTimes::perConversation($messages, $since);
         $accountOf = $messages->pluck('social_account_id', 'social_conversation_id');
@@ -1065,7 +1069,9 @@ class SocialMediaView extends Component
                 ->when($this->chatFilter === 'awaiting', fn ($q) => $q->whereKey($awaitingIds))
                 ->when($term !== '', fn ($q) => $q->where(fn ($w) => $w
                     ->where('participant_name', 'like', '%' . $term . '%')
-                    ->orWhere('snippet', 'like', '%' . $term . '%')))
+                    ->orWhere('snippet', 'like', '%' . $term . '%')
+                    // WhatsApp chats by number: "wa:96170123456"
+                    ->when(ltrim($term, '+') !== '', fn ($n) => $n->orWhere('external_id', 'like', 'wa:%' . ltrim($term, '+') . '%'))))
                 ->latest('last_message_at')
                 ->paginate(20),
             'chat' => $chat,

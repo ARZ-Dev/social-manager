@@ -81,6 +81,22 @@ class ResponseTimesTest extends TestCase
         $this->assertNotNull($onlyFailed[2]['awaitingSince']);
     }
 
+    public function test_a_reaction_does_not_wait_for_an_answer(): void
+    {
+        $since = Carbon::parse('2026-11-01');
+        $reaction = (object) ['social_conversation_id' => 1, 'from_page' => false, 'type' => 'reaction', 'sent_at' => Carbon::parse('2026-11-10 09:30')];
+        $stats = ResponseTimes::perConversation([
+            $reaction,
+            $this->msg(1, true, '2026-11-10 10:15'), // an order update, not a reply to the 👍
+        ], $since);
+
+        $this->assertSame([], $stats[1]['responses']);
+        $this->assertFalse($stats[1]['inbound']);
+
+        $onlyReaction = ResponseTimes::perConversation([$reaction], $since);
+        $this->assertNull($onlyReaction[1]['awaitingSince']);
+    }
+
     public function test_summary_of_nothing(): void
     {
         $summary = ResponseTimes::summary([]);

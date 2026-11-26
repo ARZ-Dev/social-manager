@@ -108,7 +108,10 @@ say which account it's for). Then, in BSB:
   BSB's reason). Statuses never go backwards. **BSB doesn't include the text** of messages
   you send, so they show as "Message sent from BSB (text not shared)". Statuses of messages
   to numbers that never wrote to you (e.g. campaigns) are ignored, so they don't fill the inbox.
-- There is no history: chats start from the moment the webhook is on.
+- Reactions (👍 on a message) are kept as just the emoji. They don't start a wait in the
+  response times: a reaction doesn't ask for an answer.
+- There is no history: chats start from the moment the webhook is on. BSB has no API to read
+  older chats, and **Fetch data** doesn't touch chats (it only reads today's delivery statuses).
 
 The Messages tab is read-only; reply from BSB's Unified Inbox. Disconnecting the BSB account
 deletes its chats and their files.

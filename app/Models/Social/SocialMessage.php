@@ -15,6 +15,9 @@ class SocialMessage extends Model
     /** Order of outgoing statuses: a later webhook never moves a message back. failed wins. */
     public const STATUS_RANK = ['sent' => 1, 'delivered' => 2, 'read' => 3, 'failed' => 9];
 
+    /** WhatsApp message types that carry a file. Others (text, reaction, location...) are text only. */
+    public const MEDIA_TYPES = ['image', 'video', 'audio', 'voice', 'document', 'sticker'];
+
     protected $guarded = [];
 
     protected function casts(): array
@@ -24,6 +27,34 @@ class SocialMessage extends Model
             'from_page' => 'boolean',
             'media' => 'array',
         ];
+    }
+
+    /** Whether the message carries a file (photo, voice note, document...). */
+    public function hasFile(): bool
+    {
+        $media = $this->media ?? [];
+
+        return in_array($this->type, self::MEDIA_TYPES, true) || !empty($media['download_url']) || !empty($media['path']);
+    }
+
+    /** The emoji of a WhatsApp reaction; null when the customer removed their reaction. */
+    public function reactionEmoji(): ?string
+    {
+        return self::parseReaction($this->message);
+    }
+
+    /**
+     * BSB writes reactions as "👍 *Reaction Received*: 👍 🔗 *Reacted to Message ID*: wamid…":
+     * keep only the emoji. Text that is already just the emoji comes back as is.
+     */
+    public static function parseReaction(?string $text): ?string
+    {
+        $text = trim((string) $text);
+        if (str_contains($text, 'Reaction Received')) {
+            return preg_match('/Reaction Received\**:[ \t]*([^\s*]+)/u', $text, $m) ? $m[1] : null;
+        }
+
+        return $text !== '' ? mb_substr($text, 0, 20) : null;
     }
 
     /**

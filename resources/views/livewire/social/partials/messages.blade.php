@@ -47,7 +47,7 @@
         <div class="card-header">
             <div>
                 <h2 class="card-title">By account</h2>
-                <p class="text-xs text-slate-500 dark:text-slate-400">{{ $hasBsb ? 'Messenger, Instagram Direct and WhatsApp' : 'Messenger and Instagram Direct' }}, last {{ $days }} days</p>
+                <p class="text-xs text-slate-500 dark:text-slate-400">{{ $hasWhatsAppChats ? 'Messenger, Instagram Direct and WhatsApp' : 'Messenger and Instagram Direct' }}, last {{ $days }} days</p>
             </div>
             @if($rt['awaiting'])
                 <button type="button" wire:click="setChatFilter('awaiting')" class="badge badge-yellow hover:opacity-80">
@@ -92,7 +92,7 @@
             </div>
         @endif
         <p class="border-t border-slate-100 px-5 py-2.5 text-xs text-slate-500 dark:border-slate-800 dark:text-slate-400">
-            Measured from a customer's first unanswered message to the next reply from the Page or account, using the latest 50 messages fetched per conversation{{ $hasBsb ? ', and every WhatsApp message received. WhatsApp reactions and failed replies don’t count' : '' }}.
+            Measured from a customer's first unanswered message to the next reply from the Page or account, using the latest 50 messages fetched per conversation{{ $hasWhatsAppChats ? ', and every WhatsApp message received. WhatsApp reactions and failed replies don’t count' : '' }}.
         </p>
     </div>
 </div>
@@ -160,7 +160,7 @@
                             @if($chatFilter === 'awaiting')
                                 Nobody is waiting for a reply in the last {{ $days }} days.
                             @elseif(trim($chatSearch) === '')
-                                Messenger and Instagram conversations appear after you fetch data{{ $hasBsb ? ', WhatsApp chats as soon as a message is sent or received (set them up on the BSB card in SMS & WhatsApp)' : '' }}.
+                                Messenger and Instagram conversations appear after you fetch data{{ $hasWhatsAppChats ? ', WhatsApp chats as soon as a message is sent or received (set them up on the BSB card in SMS & WhatsApp)' : '' }}.
                             @endif
                         </x-ui.empty>
                     </li>

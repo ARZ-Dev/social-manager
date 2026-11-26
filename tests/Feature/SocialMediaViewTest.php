@@ -157,6 +157,44 @@ class SocialMediaViewTest extends TestCase
         $this->assertSame('a-long-signing-secret-from-bsb', $bsb->fresh()->webhook_secret);
     }
 
+    public function test_whatsapp_chats_can_be_switched_off_and_on(): void
+    {
+        ['bsb' => $bsb] = $this->seedAccounts();
+        $bsb->bsbWebhookUrl();
+        $conv = SocialConversation::create(['social_account_id' => $bsb->id, 'external_id' => 'wa:96170555444',
+            'participant_name' => 'Jane', 'snippet' => 'Do you have oat milk?', 'last_message_at' => now()->subMinutes(30)]);
+        $conv->messages()->create(['external_id' => 'wamid.1', 'from_page' => false, 'message' => 'Do you have oat milk?', 'type' => 'text', 'sent_at' => now()->subMinutes(30)]);
+
+        $page = Livewire::actingAs($this->user)->test(SocialMediaView::class)
+            ->call('setTab', 'sms')
+            ->assertSee('Chats: waiting for BSB')
+            ->call('toggleWhatsAppChats', $bsb->id)
+            ->assertSee('WhatsApp chats off');
+        $this->assertFalse($bsb->fresh()->webhook_enabled);
+
+        // Hidden from Messages and the response times, but kept.
+        $page->call('setTab', 'messages')
+            ->assertSee('Rita')
+            ->assertDontSee('Jane')
+            ->assertSee('Messenger and Instagram Direct, last');
+        $this->assertArrayNotHasKey($conv->id, $page->viewData('responseStats'));
+        $this->assertSame(1, SocialConversation::where('social_account_id', $bsb->id)->count());
+
+        // Selecting the BSB account no longer stays on Messages.
+        $page->call('setAccount', $bsb->id)->assertSet('tab', 'sms')
+            ->call('toggleWhatsAppChats', $bsb->id)
+            ->call('setAccount', '')->call('setTab', 'messages')
+            ->assertSee('Jane');
+        $this->assertTrue($bsb->fresh()->webhook_enabled);
+
+        // Only people who can connect accounts may switch it.
+        $viewer = User::create(['username' => 'viewer', 'first_name' => 'V', 'last_name' => 'U', 'phone' => '0',
+            'email' => 'viewer@example.test', 'password' => 'password', 'company_id' => $this->company->id]);
+        $viewer->givePermissionTo('social-list');
+        Livewire::actingAs($viewer)->test(SocialMediaView::class)->call('toggleWhatsAppChats', $bsb->id)->assertForbidden();
+        $this->assertTrue($bsb->fresh()->webhook_enabled);
+    }
+
     public function test_selecting_an_account_opens_its_tab(): void
     {
         ['google' => $google, 'bsb' => $bsb] = $this->seedAccounts();

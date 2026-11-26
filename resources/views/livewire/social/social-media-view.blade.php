@@ -32,7 +32,7 @@
                     'overview' => ['Overview', 'chart-area-line', $hasSocial],
                     'posts' => ['Posts', 'photo', $hasSocial],
                     'audience' => ['Audience', 'users-group', $hasSocial],
-                    'messages' => ['Messages', 'messages', $hasSocial || $hasBsb],
+                    'messages' => ['Messages', 'messages', $hasSocial || $hasWhatsAppChats],
                     'ads' => ['Ads', 'speakerphone', $hasAds],
                     'sms' => ['SMS & WhatsApp', 'message-2', $hasBsb],
                 ];

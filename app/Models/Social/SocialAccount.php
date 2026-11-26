@@ -50,6 +50,7 @@ class SocialAccount extends Model
             'access_token' => 'encrypted',
             'webhook_secret' => 'encrypted',
             'webhook_last_at' => 'datetime',
+            'webhook_enabled' => 'boolean',
             'token_expires_at' => 'datetime',
             'last_synced_at' => 'datetime',
             'sync_queued_at' => 'datetime',
@@ -120,6 +121,12 @@ class SocialAccount extends Model
         }
 
         return route('webhooks.bsb', $this->webhook_key);
+    }
+
+    /** A BSB account whose WhatsApp chats (webhook) are switched on. On by default. */
+    public function whatsAppChatsOn(): bool
+    {
+        return $this->platform === self::BSB && ($this->webhook_enabled ?? true);
     }
 
     /** external_id for a BSB account: a short fingerprint of its API key. */

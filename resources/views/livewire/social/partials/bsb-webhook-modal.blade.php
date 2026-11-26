@@ -79,6 +79,7 @@
                 <li>Every WhatsApp message customers send, with photos, voice notes, videos and documents, from now on. BSB doesn't send older chats.</li>
                 <li>Every message sent from BSB, with its delivery and read status but without its text: BSB's webhook doesn't include it.</li>
                 <li>Messages to numbers that never wrote to you (order confirmations, campaigns) get their own chat too.</li>
+                <li>To pause it all, use the switch next to <strong>Settings</strong> on the BSB card: deliveries are then ignored and the chats hidden, without deleting them.</li>
             </ul>
         </div>
     </div>

@@ -239,6 +239,20 @@ class BsbWebhookTest extends TestCase
         $this->assertSame(1, SocialConversation::count());
     }
 
+    public function test_switched_off_account_drops_deliveries(): void
+    {
+        $this->account->update(['webhook_enabled' => false]);
+
+        $this->deliver($this->textEvent())->assertOk()->assertJson(['ok' => true, 'result' => 'disabled']);
+        $this->deliver($this->statusEvent('wamid.ORDER', 'delivered', '2026-07-01T12:00:00+00:00'))->assertOk()->assertJson(['result' => 'disabled']);
+
+        $this->assertSame(0, SocialConversation::count());
+        $this->assertNull($this->account->fresh()->webhook_last_at);
+
+        $this->account->update(['webhook_enabled' => true]);
+        $this->deliver($this->textEvent())->assertOk()->assertJson(['result' => 'stored']);
+    }
+
     public function test_status_without_a_number_for_an_unknown_message_is_ignored(): void
     {
         $this->deliver($this->statusEvent('wamid.X', 'delivered', '2026-07-01T12:00:00+00:00', null, ''))
@@ -261,10 +275,16 @@ class BsbWebhookTest extends TestCase
             'password' => 'password', 'company_id' => $companyId,
         ]))->givePermissionTo('social-list');
 
-        $this->actingAs($user($this->account->company_id, 'insider'))
+        $insider = $user($this->account->company_id, 'insider');
+        $this->actingAs($insider)
             ->get(route('social.media', $message))
             ->assertOk()
             ->assertHeader('X-Content-Type-Options', 'nosniff');
+
+        // Hidden while the account's WhatsApp chats are off.
+        $this->account->update(['webhook_enabled' => false]);
+        $this->actingAs($insider)->get(route('social.media', $message))->assertNotFound();
+        $this->account->update(['webhook_enabled' => true]);
 
         $other = Company::create(['name' => 'Other']);
         $this->actingAs($user($other->id, 'outsider'))->get(route('social.media', $message))->assertNotFound();
